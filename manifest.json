@@ -3,6 +3,14 @@
     "guid": "f008c7ae-97d2-4148-8d02-e281034b764d",
     "versions": [
       {
+        "version": "1.1.0.0",
+        "changelog": "Cleaner settings page: tabs for Profiles, Devices, Speed and storage, and Advanced; profiles are compact cards with a summary and a size-per-hour estimate; simple choices for resolution, video format and audio; the GPU section shows what Jellyfin is set to. Activity page: summary tiles, an encoder badge, and collapsible error details.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/chendrak/jellyfin-plugin-download-transcoder/releases/download/v1.1.0.0/download-transcoder_1.1.0.0.zip",
+        "checksum": "5aeb2fc2e7a18f43e0ed953d8587017a",
+        "timestamp": "2026-11-12T18:39:24Z"
+      },
+      {
         "version": "1.0.4.0",
         "changelog": "Full GPU pipeline for Intel and AMD (QSV or VAAPI on Linux): decoding, scaling and HDR tone mapping now also run on the GPU. Falls back to GPU encode only, then CPU, per file. Can be turned off in the settings.",
         "targetAbi": "12.0.0.0",
