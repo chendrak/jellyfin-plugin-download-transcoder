@@ -54,6 +54,13 @@ public class PreTranscodeTask : IScheduledTask
             return;
         }
 
+        var profile = DeviceDetector.FindByName(cfg, cfg.PreTranscodeProfile);
+        if (profile is null)
+        {
+            _logger.LogWarning("Pre-transcode profile {Profile} does not exist", cfg.PreTranscodeProfile);
+            return;
+        }
+
         var items = new List<BaseItem>();
         foreach (var libraryId in cfg.PreTranscodeLibraryIds)
         {
@@ -73,12 +80,12 @@ public class PreTranscodeTask : IScheduledTask
             }));
         }
 
-        var todo = items.Where(i => _transcodeService.ShouldTranscode(i) && _transcodeService.TryGetCached(i) is null).ToList();
+        var todo = items.Where(i => _transcodeService.ShouldTranscode(i, profile) && _transcodeService.TryGetCached(i, profile) is null).ToList();
         _logger.LogInformation("Pre-transcoding {Count} items for download", todo.Count);
         for (var i = 0; i < todo.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await _transcodeService.TranscodeToCacheAsync(todo[i], cancellationToken).ConfigureAwait(false);
+            await _transcodeService.TranscodeToCacheAsync(todo[i], profile, cancellationToken).ConfigureAwait(false);
             progress.Report(100.0 * (i + 1) / todo.Count);
         }
     }

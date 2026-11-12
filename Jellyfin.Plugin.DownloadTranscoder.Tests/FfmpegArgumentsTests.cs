@@ -46,7 +46,7 @@ public sealed class FfmpegArgumentsTests : IDisposable
     public void CachedFileIsSmallerSeekableMp4WithAllTracks()
     {
         var output = Path.Combine(_dir, "out.mp4");
-        Transcode(output, TranscodeService.LiveFormat.File, new PluginConfiguration());
+        Transcode(output, TranscodeService.LiveFormat.File, Phone());
 
         var probe = Probe(output);
         Assert.Contains("format_name=mov,mp4", probe, StringComparison.Ordinal);
@@ -63,7 +63,7 @@ public sealed class FfmpegArgumentsTests : IDisposable
     public void LiveFragmentedMp4CanBeRemuxedIntoCache()
     {
         var live = Path.Combine(_dir, "live.partial");
-        Transcode(live, TranscodeService.LiveFormat.FragmentedMp4, new PluginConfiguration());
+        Transcode(live, TranscodeService.LiveFormat.FragmentedMp4, Phone());
         Assert.Contains("height=720", Probe(live), StringComparison.Ordinal);
 
         var remuxed = Path.Combine(_dir, "remuxed.mp4");
@@ -77,7 +77,7 @@ public sealed class FfmpegArgumentsTests : IDisposable
     public void LiveMpegTsDropsSubtitles()
     {
         var output = Path.Combine(_dir, "live.ts");
-        Transcode(output, TranscodeService.LiveFormat.MpegTs, new PluginConfiguration());
+        Transcode(output, TranscodeService.LiveFormat.MpegTs, Phone());
         var probe = Probe(output);
         Assert.Contains("format_name=mpegts", probe, StringComparison.Ordinal);
         Assert.Contains("height=720", probe, StringComparison.Ordinal);
@@ -88,16 +88,15 @@ public sealed class FfmpegArgumentsTests : IDisposable
     public void DefaultAudioOnlyAndHevcAndCustomHeight()
     {
         var output = Path.Combine(_dir, "hevc.mp4");
-        var cfg = new PluginConfiguration
+        var cfg = new PluginConfiguration { KeepAllAudioTracks = false, KeepTextSubtitles = false };
+        var profile = new TranscodeProfile
         {
-            KeepAllAudioTracks = false,
-            KeepTextSubtitles = false,
             MaxHeight = 480,
             VideoEncoder = "libx265",
             EncoderPreset = "ultrafast",
             VideoBitrateKbps = 800
         };
-        Transcode(output, TranscodeService.LiveFormat.File, cfg);
+        Transcode(output, TranscodeService.LiveFormat.File, profile, cfg);
         var probe = Probe(output);
         Assert.Contains("codec_name=hevc", probe, StringComparison.Ordinal);
         Assert.Contains("codec_tag_string=hvc1", probe, StringComparison.Ordinal);
@@ -114,10 +113,10 @@ public sealed class FfmpegArgumentsTests : IDisposable
         streams[0].ColorTransfer = "smpte2084";
         streams[0].ColorPrimaries = "bt2020";
         streams[0].BitDepth = 10;
-        var args = TranscodeService.BuildArguments(item, streams, "x.mp4", TranscodeService.LiveFormat.File, new PluginConfiguration());
+        var args = TranscodeService.BuildArguments(item, streams, "x.mp4", TranscodeService.LiveFormat.File, Phone(), new PluginConfiguration());
         Assert.Contains(args, a => a.Contains("tonemap=", StringComparison.Ordinal));
 
-        var noTonemap = TranscodeService.BuildArguments(item, streams, "x.mp4", TranscodeService.LiveFormat.File, new PluginConfiguration { TonemapHdr = false });
+        var noTonemap = TranscodeService.BuildArguments(item, streams, "x.mp4", TranscodeService.LiveFormat.File, Phone(), new PluginConfiguration { TonemapHdr = false });
         Assert.DoesNotContain(noTonemap, a => a.Contains("tonemap=", StringComparison.Ordinal));
     }
 
@@ -128,10 +127,12 @@ public sealed class FfmpegArgumentsTests : IDisposable
         Assert.Equal(["-hwaccel", "vaapi", "-hwaccel_device", "/dev/dri/render D128"], parts);
     }
 
-    private void Transcode(string output, TranscodeService.LiveFormat format, PluginConfiguration cfg)
+    private static TranscodeProfile Phone() => TranscodeProfile.Defaults()[0];
+
+    private void Transcode(string output, TranscodeService.LiveFormat format, TranscodeProfile profile, PluginConfiguration? cfg = null)
     {
         var item = new Movie { Path = _source, Id = Guid.NewGuid() };
-        var args = TranscodeService.BuildArguments(item, Streams(), output, format, cfg);
+        var args = TranscodeService.BuildArguments(item, Streams(), output, format, profile, cfg ?? new PluginConfiguration());
         Run(Ffmpeg, args);
     }
 

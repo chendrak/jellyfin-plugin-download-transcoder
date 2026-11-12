@@ -35,36 +35,6 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool Enabled { get; set; } = true;
 
     /// <summary>
-    /// Gets or sets the maximum output height in pixels. Width follows the aspect ratio.
-    /// </summary>
-    public int MaxHeight { get; set; } = 720;
-
-    /// <summary>
-    /// Gets or sets the target video bitrate in kbit/s.
-    /// </summary>
-    public int VideoBitrateKbps { get; set; } = 2000;
-
-    /// <summary>
-    /// Gets or sets the ffmpeg video encoder, e.g. libx264, libx265, h264_nvenc, h264_qsv, hevc_videotoolbox.
-    /// </summary>
-    public string VideoEncoder { get; set; } = "libx264";
-
-    /// <summary>
-    /// Gets or sets the encoder preset (empty to omit, needed for some hardware encoders).
-    /// </summary>
-    public string EncoderPreset { get; set; } = "veryfast";
-
-    /// <summary>
-    /// Gets or sets the AAC audio bitrate in kbit/s, per track.
-    /// </summary>
-    public int AudioBitrateKbps { get; set; } = 128;
-
-    /// <summary>
-    /// Gets or sets the number of audio channels (2 = stereo downmix).
-    /// </summary>
-    public int AudioChannels { get; set; } = 2;
-
-    /// <summary>
     /// Gets or sets a value indicating whether every audio track is kept (otherwise only the default one).
     /// </summary>
     public bool KeepAllAudioTracks { get; set; } = true;
@@ -95,15 +65,14 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool SkipIfAlreadySmall { get; set; } = true;
 
     /// <summary>
-    /// Gets or sets the client names (as reported by the app, e.g. "Jellyfin Android") that get transcoded downloads.
-    /// Empty means every client.
+    /// Gets or sets the quality profiles. The first matching profile wins; see <see cref="TranscodeProfile"/>.
     /// </summary>
-    public string IncludedClients { get; set; } = string.Empty;
+    public TranscodeProfile[] Profiles { get; set; } = TranscodeProfile.Defaults();
 
     /// <summary>
-    /// Gets or sets the client names that always get the original file.
+    /// Gets or sets explicit device to profile assignments, which override detection.
     /// </summary>
-    public string ExcludedClients { get; set; } = string.Empty;
+    public DeviceAssignment[] DeviceAssignments { get; set; } = Array.Empty<DeviceAssignment>();
 
     /// <summary>
     /// Gets or sets what happens when nothing is cached yet.
@@ -134,6 +103,11 @@ public class PluginConfiguration : BasePluginConfiguration
     /// Gets or sets the libraries whose newest items are pre-transcoded by the scheduled task.
     /// </summary>
     public string[] PreTranscodeLibraryIds { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Gets or sets the profile the scheduled task pre-transcodes with.
+    /// </summary>
+    public string PreTranscodeProfile { get; set; } = "Phone";
 
     /// <summary>
     /// Gets or sets how many of the newest items per library the scheduled task pre-transcodes.

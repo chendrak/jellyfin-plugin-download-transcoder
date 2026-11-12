@@ -20,6 +20,8 @@ namespace Jellyfin.Plugin.DownloadTranscoder;
 public sealed class DownloadResultFilter : IAsyncResultFilter
 {
     private const string ClientClaim = "Jellyfin-Client";
+    private const string DeviceClaim = "Jellyfin-Device";
+    private const string DeviceIdClaim = "Jellyfin-DeviceId";
 
     private readonly ILibraryManager _libraryManager;
     private readonly TranscodeService _transcodeService;
@@ -72,11 +74,23 @@ public sealed class DownloadResultFilter : IAsyncResultFilter
             return;
         }
 
-        var client = context.HttpContext.User.FindFirst(ClientClaim)?.Value ?? string.Empty;
-        if (!ClientAllowed(cfg, client))
+        var user = context.HttpContext.User;
+        var client = user.FindFirst(ClientClaim)?.Value ?? string.Empty;
+        var device = user.FindFirst(DeviceClaim)?.Value ?? string.Empty;
+        var deviceId = user.FindFirst(DeviceIdClaim)?.Value ?? string.Empty;
+        var userAgent = request.Headers.UserAgent.ToString();
+
+        // ?profile=Name picks a profile explicitly.
+        var requested = request.Query["profile"].ToString();
+        var profile = string.IsNullOrEmpty(requested)
+            ? DeviceDetector.SelectProfile(cfg, deviceId, client, device, userAgent)
+            : DeviceDetector.FindByName(cfg, requested);
+        if (profile is null)
         {
             return;
         }
+
+        var who = client + " on " + device + " (profile " + profile.Name + ")";
 
         if (!Guid.TryParse(Convert.ToString(context.RouteData.Values["itemId"], CultureInfo.InvariantCulture), out var itemId))
         {
@@ -84,15 +98,15 @@ public sealed class DownloadResultFilter : IAsyncResultFilter
         }
 
         var item = _libraryManager.GetItemById(itemId);
-        if (item is null || !_transcodeService.ShouldTranscode(item))
+        if (item is null || !_transcodeService.ShouldTranscode(item, profile))
         {
             return;
         }
 
-        var cached = _transcodeService.TryGetCached(item);
+        var cached = _transcodeService.TryGetCached(item, profile);
         if (cached is not null)
         {
-            _logger.LogInformation("Serving cached transcode of {Name} to {Client}", item.Name, client);
+            _logger.LogInformation("Serving cached transcode of {Name} to {Client}", item.Name, who);
             context.Result = new PhysicalFileResult(cached, "video/mp4")
             {
                 FileDownloadName = TranscodeService.DownloadName(item, ".mp4"),
@@ -104,12 +118,12 @@ public sealed class DownloadResultFilter : IAsyncResultFilter
         switch (cfg.OnDemand)
         {
             case OnDemandMode.Live:
-                _logger.LogInformation("Transcoding {Name} live for {Client}", item.Name, client);
-                context.Result = new LiveTranscodeResult(_transcodeService, item);
+                _logger.LogInformation("Transcoding {Name} live for {Client}", item.Name, who);
+                context.Result = new LiveTranscodeResult(_transcodeService, item, profile);
                 break;
             case OnDemandMode.Queue:
-                _logger.LogInformation("Queued {Name} for transcoding; asked {Client} to retry later", item.Name, client);
-                _transcodeService.Queue(item);
+                _logger.LogInformation("Queued {Name} for transcoding; asked {Client} to retry later", item.Name, who);
+                _transcodeService.Queue(item, profile);
                 context.HttpContext.Response.Headers.RetryAfter = "600";
                 context.Result = new ObjectResult("A smaller copy is being prepared. Try the download again in a few minutes.")
                 {
@@ -121,20 +135,6 @@ public sealed class DownloadResultFilter : IAsyncResultFilter
         }
     }
 
-    private static bool ClientAllowed(PluginConfiguration cfg, string client)
-    {
-        static bool Matches(string list, string client)
-            => list.Split([',', ';', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Any(c => string.Equals(c, client, StringComparison.OrdinalIgnoreCase));
-
-        if (!string.IsNullOrWhiteSpace(cfg.ExcludedClients) && Matches(cfg.ExcludedClients, client))
-        {
-            return false;
-        }
-
-        return string.IsNullOrWhiteSpace(cfg.IncludedClients) || Matches(cfg.IncludedClients, client);
-    }
-
     private static bool IsTrue(string? value)
         => value is not null && (value == "1" || value.Equals("true", StringComparison.OrdinalIgnoreCase));
 
@@ -142,13 +142,15 @@ public sealed class DownloadResultFilter : IAsyncResultFilter
     {
         private readonly TranscodeService _service;
         private readonly MediaBrowser.Controller.Entities.BaseItem _item;
+        private readonly TranscodeProfile _profile;
 
-        public LiveTranscodeResult(TranscodeService service, MediaBrowser.Controller.Entities.BaseItem item)
+        public LiveTranscodeResult(TranscodeService service, MediaBrowser.Controller.Entities.BaseItem item, TranscodeProfile profile)
         {
             _service = service;
             _item = item;
+            _profile = profile;
         }
 
-        public Task ExecuteResultAsync(ActionContext context) => _service.StreamLiveAsync(_item, context.HttpContext);
+        public Task ExecuteResultAsync(ActionContext context) => _service.StreamLiveAsync(_item, _profile, context.HttpContext);
     }
 }

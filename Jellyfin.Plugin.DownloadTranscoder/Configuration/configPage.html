@@ -21,36 +21,12 @@
                         </label>
                     </div>
 
-                    <h3>Quality</h3>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="MaxHeight">Maximum height (pixels)</label>
-                        <input id="MaxHeight" type="number" is="emby-input" min="144" />
-                        <div class="fieldDescription">480, 720 or 1080 are typical. Smaller sources are never upscaled.</div>
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="VideoBitrateKbps">Video bitrate (kbit/s)</label>
-                        <input id="VideoBitrateKbps" type="number" is="emby-input" min="100" />
-                        <div class="fieldDescription">About 0.9 GB per hour at 2000 kbit/s.</div>
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="VideoEncoder">Video encoder</label>
-                        <input id="VideoEncoder" type="text" is="emby-input" />
-                        <div class="fieldDescription">libx264 (H.264, plays everywhere), libx265 (HEVC, smaller), or a hardware encoder such as h264_nvenc, h264_qsv, h264_vaapi, hevc_videotoolbox.</div>
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="EncoderPreset">Encoder preset</label>
-                        <input id="EncoderPreset" type="text" is="emby-input" />
-                        <div class="fieldDescription">For libx264/libx265: ultrafast to veryslow. Slower is smaller but takes longer. Leave empty for encoders without presets.</div>
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="AudioBitrateKbps">Audio bitrate per track (kbit/s, AAC)</label>
-                        <input id="AudioBitrateKbps" type="number" is="emby-input" min="32" />
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="AudioChannels">Audio channels</label>
-                        <input id="AudioChannels" type="number" is="emby-input" min="1" max="8" />
-                        <div class="fieldDescription">2 downmixes surround to stereo, which suits phones and headphones.</div>
-                    </div>
+                    <h3>Profiles</h3>
+                    <p>Each download uses one profile. The server picks it in this order: a device you assigned below, then a profile whose "match names" fits the app or device name, then the detected kind of device (phone, tablet, TV, computer), then the "Other" profile.</p>
+                    <div id="Profiles"></div>
+                    <button is="emby-button" type="button" id="AddProfile" class="raised emby-button"><span>Add profile</span></button>
+
+                    <h3>Shared options</h3>
                     <div class="checkboxContainer">
                         <label class="emby-checkbox-label">
                             <input id="KeepAllAudioTracks" type="checkbox" is="emby-checkbox" />
@@ -72,21 +48,13 @@
                     <div class="checkboxContainer">
                         <label class="emby-checkbox-label">
                             <input id="SkipIfAlreadySmall" type="checkbox" is="emby-checkbox" />
-                            <span>Send the original when it is already within these limits</span>
+                            <span>Send the original when it is already within the profile's limits</span>
                         </label>
                     </div>
 
-                    <h3>Which downloads</h3>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="IncludedClients">Only these apps (comma separated)</label>
-                        <input id="IncludedClients" type="text" is="emby-input" />
-                        <div class="fieldDescription">App names as shown under Dashboard, Devices, e.g. "Jellyfin Android". Empty means every app.</div>
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="ExcludedClients">Never these apps (comma separated)</label>
-                        <input id="ExcludedClients" type="text" is="emby-input" />
-                        <div class="fieldDescription">e.g. "Jellyfin Web" to keep original downloads from the browser.</div>
-                    </div>
+                    <h3>Devices</h3>
+                    <p>Devices that have signed in to this server, what the server detected them as, and which profile their downloads use. Pick a profile to override detection for one device. Save to apply.</p>
+                    <div id="Devices">Loading…</div>
 
                     <h3>When no smaller copy is ready yet</h3>
                     <div class="selectContainer">
@@ -127,6 +95,10 @@
                         <div id="Libraries"></div>
                         <div class="fieldDescription">The "Pre-transcode downloads" scheduled task runs daily at 3 AM. You can run it now from Dashboard, Scheduled Tasks.</div>
                     </div>
+                    <div class="selectContainer">
+                        <label class="selectLabel" for="PreTranscodeProfile">Pre-transcode with profile</label>
+                        <select is="emby-select" id="PreTranscodeProfile" class="emby-select-withcolor emby-select"></select>
+                    </div>
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="PreTranscodeNewestItems">Newest items per library</label>
                         <input id="PreTranscodeNewestItems" type="number" is="emby-input" min="1" />
@@ -156,25 +128,128 @@
             (function () {
                 var pluginId = 'f008c7ae-97d2-4148-8d02-e281034b764d';
                 var page = document.querySelector('#DownloadTranscoderConfigPage');
-                var textFields = ['VideoEncoder', 'EncoderPreset', 'IncludedClients', 'ExcludedClients', 'CachePath', 'ExtraInputArguments', 'CustomVideoFilter', 'OnDemand', 'LiveContainer'];
-                var numberFields = ['MaxHeight', 'VideoBitrateKbps', 'AudioBitrateKbps', 'AudioChannels', 'MaxCacheSizeGb', 'MaxConcurrentTranscodes', 'PreTranscodeNewestItems'];
+                var textFields = ['CachePath', 'ExtraInputArguments', 'CustomVideoFilter', 'OnDemand', 'LiveContainer'];
+                var numberFields = ['MaxCacheSizeGb', 'MaxConcurrentTranscodes', 'PreTranscodeNewestItems'];
                 var boolFields = ['Enabled', 'KeepAllAudioTracks', 'KeepTextSubtitles', 'TonemapHdr', 'SkipIfAlreadySmall'];
+                var kinds = [['Phone', 'Phone'], ['Tablet', 'Tablet'], ['Tv', 'TV'], ['Desktop', 'Computer'], ['Other', 'Other / unknown']];
+                var profiles = [];
+                var assignments = {};
+                var devices = [];
 
                 function el(id) { return page.querySelector('#' + id); }
+                function esc(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
+
+                function readProfiles() {
+                    page.querySelectorAll('.profileBox').forEach(function (box) {
+                        var p = profiles[parseInt(box.getAttribute('data-index'), 10)];
+                        box.querySelectorAll('[data-field]').forEach(function (input) {
+                            var f = input.getAttribute('data-field');
+                            if (input.type === 'checkbox') { p[f] = input.checked; }
+                            else if (input.type === 'number') { p[f] = parseInt(input.value, 10) || 0; }
+                            else { p[f] = input.value; }
+                        });
+                    });
+                }
+
+                function field(label, f, value, type, help) {
+                    return '<div class="inputContainer"><label class="inputLabel">' + label + '</label>' +
+                        '<input is="emby-input" type="' + type + '" data-field="' + f + '" value="' + esc(value) + '" />' +
+                        (help ? '<div class="fieldDescription">' + help + '</div>' : '') + '</div>';
+                }
+
+                function renderProfiles() {
+                    el('Profiles').innerHTML = profiles.map(function (p, i) {
+                        var kindOptions = kinds.map(function (k) {
+                            return '<option value="' + k[0] + '"' + (p.DeviceKind === k[0] ? ' selected' : '') + '>' + k[1] + '</option>';
+                        }).join('');
+                        return '<div class="profileBox paperList" data-index="' + i + '" style="padding:1em;margin-bottom:1em;">' +
+                            field('Profile name', 'Name', p.Name, 'text') +
+                            '<div class="selectContainer"><label class="selectLabel">Used for detected</label><select is="emby-select" data-field="DeviceKind">' + kindOptions + '</select></div>' +
+                            field('Also use for these app or device names', 'MatchNames', p.MatchNames, 'text', 'Comma separated, partial match, e.g. "Findroid, Pixel Tablet".') +
+                            '<div class="checkboxContainer"><label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" data-field="Transcode"' + (p.Transcode ? ' checked' : '') + ' /><span>Transcode (untick to send the original file)</span></label></div>' +
+                            field('Maximum height (pixels)', 'MaxHeight', p.MaxHeight, 'number', '480, 720, 1080 or 2160. Never upscales.') +
+                            field('Video bitrate (kbit/s)', 'VideoBitrateKbps', p.VideoBitrateKbps, 'number', 'About 0.45 GB per hour per 1000 kbit/s.') +
+                            field('Video encoder', 'VideoEncoder', p.VideoEncoder, 'text', 'libx264 (plays everywhere), libx265 (smaller), or hardware: h264_nvenc, h264_qsv, h264_vaapi, hevc_videotoolbox.') +
+                            field('Encoder preset', 'EncoderPreset', p.EncoderPreset, 'text', 'ultrafast to veryslow for libx264/libx265. Empty for encoders without presets.') +
+                            field('Audio bitrate per track (kbit/s, AAC)', 'AudioBitrateKbps', p.AudioBitrateKbps, 'number') +
+                            field('Audio channels', 'AudioChannels', p.AudioChannels, 'number', '2 = stereo, 6 = 5.1') +
+                            '<button is="emby-button" type="button" class="raised emby-button removeProfile" data-index="' + i + '"><span>Remove profile</span></button>' +
+                            '</div>';
+                    }).join('');
+                    page.querySelectorAll('.profileBox [data-field="Name"]').forEach(function (input) {
+                        input.addEventListener('change', function () {
+                            var i = parseInt(input.closest('.profileBox').getAttribute('data-index'), 10);
+                            var oldName = profiles[i].Name;
+                            var pre = el('PreTranscodeProfile').value;
+                            readProfiles();
+                            Object.keys(assignments).forEach(function (id) { if (assignments[id] === oldName) { assignments[id] = profiles[i].Name; } });
+                            renderDevices();
+                            el('PreTranscodeProfile').innerHTML = profileOptions(pre === oldName ? profiles[i].Name : pre, false);
+                        });
+                    });
+                    page.querySelectorAll('.removeProfile').forEach(function (b) {
+                        b.addEventListener('click', function () {
+                            readProfiles();
+                            profiles.splice(parseInt(b.getAttribute('data-index'), 10), 1);
+                            renderAll();
+                        });
+                    });
+                }
+
+                function profileOptions(selected, includeAuto) {
+                    var html = includeAuto ? '<option value="">Automatic</option>' : '';
+                    return html + profiles.map(function (p) {
+                        return '<option value="' + esc(p.Name) + '"' + (p.Name === selected ? ' selected' : '') + '>' + esc(p.Name) + '</option>';
+                    }).join('');
+                }
+
+                function renderDevices() {
+                    if (!devices.length) { el('Devices').innerHTML = 'No devices yet.'; return; }
+                    el('Devices').innerHTML = '<table class="detailTable" style="width:100%"><thead><tr><th style="text-align:left">Device</th><th style="text-align:left">App</th><th style="text-align:left">User</th><th style="text-align:left">Detected</th><th style="text-align:left">Profile now</th><th style="text-align:left">Override</th></tr></thead><tbody>' +
+                        devices.map(function (d) {
+                            return '<tr><td>' + esc(d.Name) + '</td><td>' + esc(d.AppName) + '</td><td>' + esc(d.LastUserName) + '</td><td>' + esc(d.DetectedKind) + '</td><td>' + esc(d.Profile) + '</td>' +
+                                '<td><select is="emby-select" class="deviceAssign" data-id="' + esc(d.Id) + '">' + profileOptions(assignments[d.Id] || '', true) + '</select></td></tr>';
+                        }).join('') + '</tbody></table>';
+                    page.querySelectorAll('.deviceAssign').forEach(function (s) {
+                        s.addEventListener('change', function () {
+                            if (s.value) { assignments[s.getAttribute('data-id')] = s.value; } else { delete assignments[s.getAttribute('data-id')]; }
+                        });
+                    });
+                }
+
+                function renderAll(preSelected) {
+                    renderProfiles();
+                    renderDevices();
+                    var current = preSelected || el('PreTranscodeProfile').value;
+                    el('PreTranscodeProfile').innerHTML = profileOptions(current, false);
+                }
+
+                function loadDevices() {
+                    return ApiClient.getJSON(ApiClient.getUrl('DownloadTranscoder/Devices')).then(function (d) { devices = d; }, function () { devices = []; });
+                }
+
+                el('AddProfile').addEventListener('click', function () {
+                    readProfiles();
+                    profiles.push({ Name: 'New profile', DeviceKind: 'Other', MatchNames: '', Transcode: true, MaxHeight: 720, VideoBitrateKbps: 2000, VideoEncoder: 'libx264', EncoderPreset: 'veryfast', AudioBitrateKbps: 128, AudioChannels: 2 });
+                    renderAll();
+                });
 
                 page.addEventListener('pageshow', function () {
                     Dashboard.showLoadingMsg();
-                    Promise.all([ApiClient.getPluginConfiguration(pluginId), ApiClient.getVirtualFolders()]).then(function (r) {
+                    Promise.all([ApiClient.getPluginConfiguration(pluginId), ApiClient.getVirtualFolders(), loadDevices()]).then(function (r) {
                         var config = r[0];
                         var folders = r[1];
                         textFields.forEach(function (f) { el(f).value = config[f] == null ? '' : config[f]; });
                         numberFields.forEach(function (f) { el(f).value = config[f]; });
                         boolFields.forEach(function (f) { el(f).checked = !!config[f]; });
+                        profiles = config.Profiles || [];
+                        assignments = {};
+                        (config.DeviceAssignments || []).forEach(function (a) { assignments[a.DeviceId] = a.Profile; });
+                        renderAll(config.PreTranscodeProfile);
                         var selected = config.PreTranscodeLibraryIds || [];
                         el('Libraries').innerHTML = folders.map(function (lib) {
                             var checked = selected.indexOf(lib.ItemId) >= 0 ? ' checked' : '';
-                            var name = String(lib.Name).replace(/&/g, '&amp;').replace(/</g, '&lt;');
-                            return '<label class="emby-checkbox-label"><input type="checkbox" is="emby-checkbox" class="libraryCheck" data-id="' + lib.ItemId + '"' + checked + ' /><span>' + name + '</span></label>';
+                            return '<label class="emby-checkbox-label"><input type="checkbox" is="emby-checkbox" class="libraryCheck" data-id="' + lib.ItemId + '"' + checked + ' /><span>' + esc(lib.Name) + '</span></label>';
                         }).join('<br/>');
                         Dashboard.hideLoadingMsg();
                     });
@@ -183,13 +258,18 @@
                 page.querySelector('#DownloadTranscoderConfigForm').addEventListener('submit', function (e) {
                     e.preventDefault();
                     Dashboard.showLoadingMsg();
+                    readProfiles();
                     ApiClient.getPluginConfiguration(pluginId).then(function (config) {
                         textFields.forEach(function (f) { config[f] = el(f).value; });
                         numberFields.forEach(function (f) { config[f] = parseInt(el(f).value, 10) || 0; });
                         boolFields.forEach(function (f) { config[f] = el(f).checked; });
+                        config.Profiles = profiles;
+                        config.DeviceAssignments = Object.keys(assignments).map(function (id) { return { DeviceId: id, Profile: assignments[id] }; });
+                        config.PreTranscodeProfile = el('PreTranscodeProfile').value;
                         config.PreTranscodeLibraryIds = Array.prototype.map.call(page.querySelectorAll('.libraryCheck:checked'), function (c) { return c.getAttribute('data-id'); });
                         ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
                             Dashboard.processPluginConfigurationUpdateResult(result);
+                            loadDevices().then(function () { renderDevices(); });
                         });
                     });
                     return false;

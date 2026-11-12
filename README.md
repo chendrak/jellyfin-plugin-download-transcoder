@@ -9,7 +9,8 @@ Requires **Jellyfin 12.x**.
 ## What it does
 
 - Transcodes with Jellyfin's own ffmpeg, the one set under Dashboard → Playback → Transcoding.
-- Uses defaults suited to phones: 720p H.264 at 2 Mbit/s with stereo AAC, which is about 0.9 GB per hour. Text subtitles are embedded, and HDR is tone mapped to SDR.
+- Uses **per-device profiles**, picked automatically on the server (see below).
+- Embeds text subtitles and tone maps HDR to SDR.
 - Sends the original file untouched when it is already within your limits.
 - Caches finished transcodes, so a second download is instant and supports resuming and seeking. The oldest ones are removed when the cache reaches its size limit.
 - Can pre-transcode in advance. The **Pre-transcode downloads** scheduled task runs daily at 3 AM and prepares the newest items in the libraries you pick.
@@ -17,8 +18,27 @@ Requires **Jellyfin 12.x**.
   - **Live** (the default): transcodes while the file downloads. The app can't show a percentage because the size isn't known in advance. The result is also kept in the cache.
   - **Queue**: answers "try again later" (503) and prepares the copy in the background.
   - **Original**: sends the original file, so only pre-transcoded copies are ever used.
-- Lets you choose which apps get the smaller files (Dashboard → Devices shows app names such as "Jellyfin Android"). Adding `?original=true` to a download URL always returns the original.
+- Adding `?original=true` to a download URL always returns the original. `?profile=Tablet` forces a specific profile.
 - Supports hardware encoding through the encoder name (`h264_nvenc`, `h264_qsv`, `h264_vaapi`, …), extra input arguments and a custom filter, all set on the settings page.
+
+## Device profiles
+
+Every download uses one profile. These are the defaults, and you can change all of them in the plugin settings:
+
+| Profile  | Used for            | Output                                   | Approx. size per hour |
+|----------|---------------------|------------------------------------------|-----------------------|
+| Phone    | phones              | 720p H.264, 2 Mbit/s, stereo AAC 128k    | 0.9 GB                |
+| Tablet   | tablets             | 1080p H.264, 4 Mbit/s, stereo AAC 160k   | 1.9 GB                |
+| TV       | TVs, sticks, boxes  | original file (or 1080p HEVC 8 Mbit/s 5.1 if you turn transcoding on) | |
+| Computer | browsers, desktop apps | original file                         |                       |
+| Other    | anything unrecognised | 1080p H.264, 4 Mbit/s, stereo          | 1.9 GB                |
+
+The server picks the profile in this order:
+
+1. A device you pinned to a profile on the settings page. The page lists every device that has signed in, what it was detected as, and which profile it currently gets.
+2. A profile whose "match names" appear in the app name or device name, for example `Findroid` or `Pixel Tablet`.
+3. The detected device kind. Detection uses the app name and device name that the app registered with the server (for example "Jellyfin Android" with "SM-X710", which is a Galaxy Tab), plus the browser's User-Agent.
+4. The "Other" profile.
 
 ## Install
 

@@ -7,7 +7,8 @@ overview: "Serve smaller, transcoded files when clients download media"
 description: >
   When an app downloads a video for offline use (for example the download
   button in the Jellyfin Android app), this plugin sends a transcoded MP4 at
-  a resolution and bitrate you choose instead of the original file. Uses
+  a resolution and bitrate chosen per device type (phone, tablet, TV,
+  computer) instead of the original file. Uses
   Jellyfin's own ffmpeg, caches results and can pre-transcode new items.
 category: "General"
 owner: "chendrak"

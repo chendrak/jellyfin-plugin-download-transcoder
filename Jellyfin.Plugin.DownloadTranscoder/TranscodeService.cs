@@ -58,10 +58,11 @@ public sealed class TranscodeService : IDisposable
     /// Returns true when the item is a local video that should be shrunk with the current settings.
     /// </summary>
     /// <param name="item">The item.</param>
+    /// <param name="profile">The quality profile.</param>
     /// <returns>Whether to transcode.</returns>
-    public bool ShouldTranscode(BaseItem item)
+    public bool ShouldTranscode(BaseItem item, TranscodeProfile profile)
     {
-        if (item is not Video || item.IsVirtualItem || !item.IsFileProtocol || !File.Exists(item.Path))
+        if (!profile.Transcode || item is not Video || item.IsVirtualItem || !item.IsFileProtocol || !File.Exists(item.Path))
         {
             return false;
         }
@@ -86,8 +87,8 @@ public sealed class TranscodeService : IDisposable
             bitrate = (long)(new FileInfo(item.Path).Length * 8 / seconds);
         }
 
-        var smallEnough = (video.Height ?? int.MaxValue) <= cfg.MaxHeight
-            && bitrate is > 0 && bitrate <= cfg.VideoBitrateKbps * 1000L * 13 / 10;
+        var smallEnough = (video.Height ?? int.MaxValue) <= profile.MaxHeight
+            && bitrate is > 0 && bitrate <= profile.VideoBitrateKbps * 1000L * 13 / 10;
         var friendlyCodec = video.Codec is "h264" or "hevc";
         return !(smallEnough && friendlyCodec && !IsHdr(video));
     }
@@ -96,15 +97,16 @@ public sealed class TranscodeService : IDisposable
     /// Gets the cached transcode for the item if one is complete.
     /// </summary>
     /// <param name="item">The item.</param>
+    /// <param name="profile">The quality profile.</param>
     /// <returns>The file path, or null.</returns>
-    public string? TryGetCached(BaseItem item)
+    public string? TryGetCached(BaseItem item, TranscodeProfile profile)
     {
         if (!CacheEnabled)
         {
             return null;
         }
 
-        var path = GetCachePath(item);
+        var path = GetCachePath(item, profile);
         if (!File.Exists(path))
         {
             return null;
@@ -126,45 +128,48 @@ public sealed class TranscodeService : IDisposable
     /// Transcodes the item into the cache unless it is already there or running.
     /// </summary>
     /// <param name="item">The item.</param>
+    /// <param name="profile">The quality profile.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>True when a cached copy exists afterwards.</returns>
-    public Task<bool> TranscodeToCacheAsync(BaseItem item, CancellationToken cancellationToken)
+    public Task<bool> TranscodeToCacheAsync(BaseItem item, TranscodeProfile profile, CancellationToken cancellationToken)
     {
         if (!CacheEnabled)
         {
             return Task.FromResult(false);
         }
 
-        var target = GetCachePath(item);
+        var target = GetCachePath(item, profile);
         if (File.Exists(target))
         {
             return Task.FromResult(true);
         }
 
-        return _inFlight.GetOrAdd(target, _ => RunCacheJobAsync(item, target, cancellationToken));
+        return _inFlight.GetOrAdd(target, _ => RunCacheJobAsync(item, profile, target, cancellationToken));
     }
 
     /// <summary>
     /// Starts a background transcode into the cache.
     /// </summary>
     /// <param name="item">The item.</param>
-    public void Queue(BaseItem item)
+    /// <param name="profile">The quality profile.</param>
+    public void Queue(BaseItem item, TranscodeProfile profile)
     {
-        _ = TranscodeToCacheAsync(item, CancellationToken.None);
+        _ = TranscodeToCacheAsync(item, profile, CancellationToken.None);
     }
 
     /// <summary>
     /// Transcodes while sending to the client. The output is kept in the cache when it completes.
     /// </summary>
     /// <param name="item">The item.</param>
+    /// <param name="profile">The quality profile.</param>
     /// <param name="context">The HTTP context.</param>
     /// <returns>A task.</returns>
-    public async Task StreamLiveAsync(BaseItem item, HttpContext context)
+    public async Task StreamLiveAsync(BaseItem item, TranscodeProfile profile, HttpContext context)
     {
         var cfg = Config;
         var ts = string.Equals(cfg.LiveContainer, "mpegts", StringComparison.OrdinalIgnoreCase);
         var streams = GetStreams(item);
-        var args = BuildArguments(item, streams, "pipe:1", ts ? LiveFormat.MpegTs : LiveFormat.FragmentedMp4);
+        var args = BuildArguments(item, streams, "pipe:1", ts ? LiveFormat.MpegTs : LiveFormat.FragmentedMp4, profile);
 
         var response = context.Response;
         response.StatusCode = StatusCodes.Status200OK;
@@ -228,7 +233,7 @@ public sealed class TranscodeService : IDisposable
         if (ok)
         {
             // Remux the streamed copy into a seekable MP4 for the next download. This is a fast stream copy.
-            var target = GetCachePath(item);
+            var target = GetCachePath(item, profile);
             _ = Task.Run(() => RemuxIntoCacheAsync(partial, target));
         }
         else
@@ -299,7 +304,7 @@ public sealed class TranscodeService : IDisposable
         MpegTs
     }
 
-    private async Task<bool> RunCacheJobAsync(BaseItem item, string target, CancellationToken cancellationToken)
+    private async Task<bool> RunCacheJobAsync(BaseItem item, TranscodeProfile profile, string target, CancellationToken cancellationToken)
     {
         try
         {
@@ -313,8 +318,8 @@ public sealed class TranscodeService : IDisposable
 
                 Directory.CreateDirectory(CacheDir);
                 var partial = Path.Combine(CacheDir, Guid.NewGuid().ToString("N") + PartialExtension);
-                var args = BuildArguments(item, GetStreams(item), partial, LiveFormat.File);
-                _logger.LogInformation("Transcoding {Name} for download", item.Name);
+                var args = BuildArguments(item, GetStreams(item), partial, LiveFormat.File, profile);
+                _logger.LogInformation("Transcoding {Name} for download with profile {Profile}", item.Name, profile.Name);
                 var ok = await RunToCompletionAsync(args, cancellationToken).ConfigureAwait(false);
                 if (!ok)
                 {
@@ -465,7 +470,7 @@ public sealed class TranscodeService : IDisposable
 
     private List<MediaStream> GetStreams(BaseItem item) => _mediaSourceManager.GetMediaStreams(item.Id).ToList();
 
-    private static string GetCachePath(BaseItem item)
+    private static string GetCachePath(BaseItem item, TranscodeProfile profile)
     {
         var cfg = Config;
         var info = new FileInfo(item.Path);
@@ -473,12 +478,12 @@ public sealed class TranscodeService : IDisposable
             '|',
             info.Length,
             info.LastWriteTimeUtc.Ticks,
-            cfg.MaxHeight,
-            cfg.VideoBitrateKbps,
-            cfg.VideoEncoder,
-            cfg.EncoderPreset,
-            cfg.AudioBitrateKbps,
-            cfg.AudioChannels,
+            profile.MaxHeight,
+            profile.VideoBitrateKbps,
+            profile.VideoEncoder,
+            profile.EncoderPreset,
+            profile.AudioBitrateKbps,
+            profile.AudioChannels,
             cfg.KeepAllAudioTracks,
             cfg.KeepTextSubtitles,
             cfg.TonemapHdr,
@@ -488,7 +493,7 @@ public sealed class TranscodeService : IDisposable
         return Path.Combine(CacheDir, item.Id.ToString("N") + "_" + hash + CacheExtension);
     }
 
-    internal static List<string> BuildArguments(BaseItem item, List<MediaStream> streams, string output, LiveFormat format, PluginConfiguration? config = null)
+    internal static List<string> BuildArguments(BaseItem item, List<MediaStream> streams, string output, LiveFormat format, TranscodeProfile profile, PluginConfiguration? config = null)
     {
         var cfg = config ?? Config;
         var args = new List<string> { "-hide_banner", "-nostdin", "-y", "-loglevel", "error" };
@@ -522,7 +527,7 @@ public sealed class TranscodeService : IDisposable
             args.AddRange(["-map", "0:" + sub.Index.ToString(CultureInfo.InvariantCulture)]);
         }
 
-        var height = cfg.MaxHeight.ToString(CultureInfo.InvariantCulture);
+        var height = profile.MaxHeight.ToString(CultureInfo.InvariantCulture);
         string filter;
         if (!string.IsNullOrWhiteSpace(cfg.CustomVideoFilter))
         {
@@ -537,12 +542,12 @@ public sealed class TranscodeService : IDisposable
             }
         }
 
-        var encoder = string.IsNullOrWhiteSpace(cfg.VideoEncoder) ? "libx264" : cfg.VideoEncoder.Trim();
-        var kbps = Math.Max(100, cfg.VideoBitrateKbps);
+        var encoder = string.IsNullOrWhiteSpace(profile.VideoEncoder) ? "libx264" : profile.VideoEncoder.Trim();
+        var kbps = Math.Max(100, profile.VideoBitrateKbps);
         args.AddRange(["-vf", filter, "-c:v", encoder]);
-        if (!string.IsNullOrWhiteSpace(cfg.EncoderPreset))
+        if (!string.IsNullOrWhiteSpace(profile.EncoderPreset))
         {
-            args.AddRange(["-preset", cfg.EncoderPreset.Trim()]);
+            args.AddRange(["-preset", profile.EncoderPreset.Trim()]);
         }
 
         args.AddRange([
@@ -562,8 +567,8 @@ public sealed class TranscodeService : IDisposable
 
         args.AddRange([
             "-c:a", "aac",
-            "-b:a", Math.Max(32, cfg.AudioBitrateKbps) + "k",
-            "-ac", Math.Max(1, cfg.AudioChannels).ToString(CultureInfo.InvariantCulture)
+            "-b:a", Math.Max(32, profile.AudioBitrateKbps) + "k",
+            "-ac", Math.Max(1, profile.AudioChannels).ToString(CultureInfo.InvariantCulture)
         ]);
         if (subs.Count > 0)
         {
