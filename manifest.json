@@ -3,6 +3,14 @@
     "guid": "f008c7ae-97d2-4148-8d02-e281034b764d",
     "versions": [
       {
+        "version": "1.0.4.0",
+        "changelog": "Full GPU pipeline for Intel and AMD (QSV or VAAPI on Linux): decoding, scaling and HDR tone mapping now also run on the GPU. Falls back to GPU encode only, then CPU, per file. Can be turned off in the settings.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/chendrak/jellyfin-plugin-download-transcoder/releases/download/v1.0.4.0/download-transcoder_1.0.4.0.zip",
+        "checksum": "d64dec7452be463bb43a88d016101726",
+        "timestamp": "2026-11-12T16:56:26Z"
+      },
+      {
         "version": "1.0.3.0",
         "changelog": "Encode on the GPU using Jellyfin's own hardware acceleration settings (NVENC, Quick Sync, VAAPI, VideoToolbox, AMF, RKMPP), with automatic CPU fallback if the GPU encode fails. The activity page shows which encoder each transcode used.",
         "targetAbi": "12.0.0.0",
