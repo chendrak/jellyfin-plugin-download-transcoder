@@ -42,14 +42,15 @@ The server picks the profile in this order:
 
 ## Install
 
-1. Download `download-transcoder.zip` from the latest release, or build it yourself (see below).
-2. Create a folder named `DownloadTranscoder_1.0.0.0` inside Jellyfin's `plugins` folder:
-   - Docker: `/config/plugins`
-   - Debian/Ubuntu: `/var/lib/jellyfin/plugins`
-   - Windows: `%ProgramData%\Jellyfin\Server\plugins`
-3. Put `Jellyfin.Plugin.DownloadTranscoder.dll` inside that folder.
-4. Restart Jellyfin.
-5. Open Dashboard → Plugins → Download Transcoder to change the settings.
+1. In Jellyfin, open Dashboard → Plugins → Repositories (Catalog → ⚙ on some versions) and add a repository:
+   - Name: `Download Transcoder`
+   - URL: `https://raw.githubusercontent.com/chendrak/jellyfin-plugin-download-transcoder/main/manifest.json`
+2. Open the Catalog, install **Download Transcoder**, and restart Jellyfin.
+3. Open Dashboard → Plugins → Download Transcoder to review the profiles and devices.
+
+New versions show up as updates in the plugin list.
+
+To install by hand instead, download the zip from the latest release, put `Jellyfin.Plugin.DownloadTranscoder.dll` in a new folder such as `plugins/DownloadTranscoder_1.0.0.0` (`/config/plugins` on Docker, `/var/lib/jellyfin/plugins` on Debian/Ubuntu), and restart Jellyfin.
 
 ## Build
 
@@ -58,7 +59,7 @@ dotnet test Jellyfin.Plugin.DownloadTranscoder.slnx   # needs ffmpeg and ffprobe
 dotnet publish Jellyfin.Plugin.DownloadTranscoder -c Release -o out
 ```
 
-Pushing a `v*` tag makes GitHub Actions attach the zip to a release.
+To release, bump `version` (and `changelog`) in `build.yaml` and push to `main`. The Release workflow tests, builds the zip, creates the GitHub release and adds the version to `manifest.json`. It can also be run by hand from the Actions tab.
 
 ## Limitations
 

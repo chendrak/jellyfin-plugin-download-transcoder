@@ -1,0 +1,55 @@
+name: Release
+
+# Builds the plugin zip for the version in build.yaml, publishes it as a GitHub
+# release and adds it to manifest.json, which Jellyfin reads as a plugin repository.
+# Runs when build.yaml changes on main (bump "version" there to release) or by hand.
+on:
+  push:
+    branches: [main]
+    paths: ['build.yaml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency: release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: dotnet test Jellyfin.Plugin.DownloadTranscoder.slnx
+      - name: Read version
+        id: v
+        run: echo "version=$(grep '^version:' build.yaml | sed 's/version: *"\{0,1\}\([^"]*\)"\{0,1\}/\1/')" >> "$GITHUB_OUTPUT"
+      - name: Build zip
+        run: |
+          V=${{ steps.v.outputs.version }}
+          dotnet publish Jellyfin.Plugin.DownloadTranscoder -c Release -o out -p:Version=$V -p:AssemblyVersion=$V -p:FileVersion=$V
+          mkdir -p dist
+          (cd out && zip ../dist/download-transcoder_$V.zip Jellyfin.Plugin.DownloadTranscoder.dll)
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=${{ steps.v.outputs.version }}
+          if gh release view "v$V" >/dev/null 2>&1; then
+            gh release upload "v$V" dist/download-transcoder_$V.zip --clobber
+          else
+            gh release create "v$V" dist/download-transcoder_$V.zip --target "$GITHUB_SHA" --title "v$V" --generate-notes
+          fi
+      - name: Update manifest
+        run: |
+          V=${{ steps.v.outputs.version }}
+          python3 scripts/update_manifest.py dist/download-transcoder_$V.zip \
+            "https://github.com/${{ github.repository }}/releases/download/v$V/download-transcoder_$V.zip"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add manifest.json
+          git diff --cached --quiet || git commit -m "Update manifest for v$V [skip ci]"
+          git push
