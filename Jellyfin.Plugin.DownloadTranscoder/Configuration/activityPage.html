@@ -20,7 +20,15 @@
             #DownloadTranscoderActivityPage .dtBad { color: #f44336; }
             #DownloadTranscoderActivityPage .dtMuted { opacity: 0.7; }
             #DownloadTranscoderActivityPage .dtScroll { overflow-x: auto; }
-            #DownloadTranscoderActivityPage pre { white-space: pre-wrap; font-size: 0.8em; margin: 0.3em 0 0; }
+            #DownloadTranscoderActivityPage pre { white-space: pre-wrap; font-size: 0.8em; margin: 0.3em 0 0; max-height: 12em; overflow: auto; }
+            #DownloadTranscoderActivityPage details summary { cursor: pointer; font-size: 0.85em; opacity: 0.8; }
+            #DownloadTranscoderActivityPage .dtStats { display: grid; grid-template-columns: repeat(auto-fit, minmax(10em, 1fr)); gap: 0.75em; margin: 1em 0 1.5em; }
+            #DownloadTranscoderActivityPage .dtStat { padding: 0.8em 1em; border-radius: 0.4em; background: rgba(128,128,128,0.12); }
+            #DownloadTranscoderActivityPage .dtStat b { display: block; font-size: 1.4em; }
+            #DownloadTranscoderActivityPage .dtStat span { opacity: 0.75; font-size: 0.85em; }
+            #DownloadTranscoderActivityPage .dtChip { display: inline-block; font-size: 0.8em; padding: 0.1em 0.55em; border-radius: 1em; background: rgba(128,128,128,0.2); white-space: nowrap; }
+            #DownloadTranscoderActivityPage .dtChip.gpu { background: rgba(0,164,220,0.25); }
+            #DownloadTranscoderActivityPage h3 { margin-top: 1.5em; }
         </style>
         <div data-role="content">
             <div class="content-primary">
@@ -28,6 +36,8 @@
                     <h2 class="sectionTitle">Download Transcodes</h2>
                     <a is="emby-linkbutton" class="raised button-alt headerHelpButton emby-button" href="#/configurationpage?name=Download%20Transcoder">Settings</a>
                 </div>
+
+                <div id="dtStats" class="dtStats"></div>
 
                 <h3>Running now</h3>
                 <div id="dtActive" class="dtMuted">Loading…</div>
@@ -44,6 +54,8 @@
             (function () {
                 var page = document.querySelector('#DownloadTranscoderActivityPage');
                 var timer = null;
+                var lastJobs = null;
+                var lastCacheData = null;
 
                 function el(id) { return page.querySelector('#' + id); }
                 function esc(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
@@ -68,6 +80,29 @@
                     return (end - new Date(job.StartedUtc.endsWith('Z') ? job.StartedUtc : job.StartedUtc + 'Z')) / 1000;
                 }
 
+                function encoderChip(j) {
+                    var e = j.Encoder || '';
+                    if (!e) { return ''; }
+                    var gpu = e.indexOf('GPU') === 0;
+                    var m = e.match(/:\s*([^)]+)\)/);
+                    var short = (gpu ? 'GPU' : 'CPU') + (e.indexOf('full pipeline') >= 0 ? ' (full)' : '') + (m ? ' · ' + m[1] : '');
+                    return '<span class="dtChip' + (gpu ? ' gpu' : '') + '" title="' + esc(e) + '">' + esc(short) + '</span>' + (e.indexOf('fallback') >= 0 ? ' <span class="dtChip" title="An earlier attempt failed">fallback</span>' : '');
+                }
+
+                function renderStats(active, history, cache) {
+                    var done = history.filter(function (j) { return j.State === 'Completed' && !j.Live; });
+                    var saved = done.reduce(function (a, j) { return a + Math.max(0, (j.SourceBytes || 0) - (j.OutputBytes || 0)); }, 0);
+                    var failed = history.filter(function (j) { return j.State === 'Failed'; }).length;
+                    var stats = [
+                        [active.length, active.length === 1 ? 'transcode running' : 'transcodes running'],
+                        [done.length, 'finished'],
+                        [size(saved), 'saved on phones'],
+                        [cache ? size(cache.TotalBytes) : '…', 'in the cache']
+                    ];
+                    if (failed) { stats.push([failed, 'failed']); }
+                    el('dtStats').innerHTML = stats.map(function (s) { return '<div class="dtStat"><b>' + esc(s[0]) + '</b><span>' + esc(s[1]) + '</span></div>'; }).join('');
+                }
+
                 function renderActive(jobs) {
                     if (!jobs.length) { el('dtActive').innerHTML = 'Nothing is transcoding.'; el('dtActive').className = 'dtMuted'; return; }
                     el('dtActive').className = '';
@@ -85,21 +120,26 @@
                         return '<div class="dtJob"><div><b>' + esc(j.ItemName) + '</b></div>' +
                             '<div class="dtBar' + (known ? '' : ' indeterminate') + '"><div style="width:' + (pct || 0) + '%"></div></div>' +
                             '<div>' + esc(status) + (parts.length ? ' · ' + esc(parts.join(' · ')) : '') + '</div>' +
-                            '<div class="dtMeta">' + esc(j.Encoder || '') + ' · profile ' + esc(j.Profile) + ' · for ' + esc(j.RequestedBy || 'unknown') + ' · source ' + size(j.SourceBytes) + '</div></div>';
+                            '<div class="dtMeta">' + encoderChip(j) + ' · ' + esc(j.Profile) + ' profile · for ' + esc(j.RequestedBy || 'unknown') + ' · source ' + size(j.SourceBytes) + '</div></div>';
                     }).join('');
                 }
 
+                var lastHistoryKey = '';
                 function renderHistory(jobs) {
+                    var key = jobs.length + '|' + (jobs[0] ? jobs[0].Id : '');
+                    if (key === lastHistoryKey) { return; }
+                    lastHistoryKey = key;
                     if (!jobs.length) { el('dtHistory').innerHTML = 'No transcodes yet.'; el('dtHistory').className = 'dtScroll dtMuted'; return; }
                     el('dtHistory').className = 'dtScroll';
-                    el('dtHistory').innerHTML = '<table><thead><tr><th>Finished</th><th>Item</th><th>Profile</th><th>Encoder</th><th>For</th><th>Result</th><th>Took</th><th>Size</th></tr></thead><tbody>' +
+                    el('dtHistory').innerHTML = '<table><thead><tr><th>Finished</th><th>Item</th><th>Result</th><th>Size</th><th>Took</th><th>Encoder</th><th>For</th></tr></thead><tbody>' +
                         jobs.map(function (j) {
                             var ok = j.State === 'Completed';
                             var result = '<span class="' + (ok ? 'dtOk' : j.State === 'Failed' ? 'dtBad' : 'dtMuted') + '">' + esc(j.State) + (j.Live ? ' (live)' : '') + '</span>';
-                            if (j.Error) { result += '<pre>' + esc(j.Error) + '</pre>'; }
+                            if (j.Error) { result += '<details><summary>Details</summary><pre>' + esc(j.Error) + '</pre></details>'; }
+                            var enc = encoderChip(j) + (j.GpuError ? '<details><summary>Earlier attempt failed</summary><pre>' + esc(j.GpuError) + '</pre></details>' : '');
                             var sizeText = ok && j.OutputBytes ? size(j.SourceBytes) + ' → ' + size(j.OutputBytes) +
                                 (j.SourceBytes ? ' (' + Math.round(100 - 100 * j.OutputBytes / j.SourceBytes) + '% smaller)' : '') : '';
-                            return '<tr><td>' + when(j.EndedUtc) + '</td><td>' + esc(j.ItemName) + '</td><td>' + esc(j.Profile) + '</td><td>' + esc(j.Encoder || '') + (j.GpuError ? '<pre>' + esc(j.GpuError) + '</pre>' : '') + '</td><td>' + esc(j.RequestedBy) + '</td><td>' + result + '</td><td>' + dur(elapsed(j)) + '</td><td>' + sizeText + '</td></tr>';
+                            return '<tr><td>' + when(j.EndedUtc) + '</td><td>' + esc(j.ItemName) + '<div class="dtMeta">' + esc(j.Profile) + ' profile</div></td><td>' + result + '</td><td>' + sizeText + '</td><td>' + dur(elapsed(j)) + '</td><td>' + enc + '</td><td class="dtMeta">' + esc(j.RequestedBy) + '</td></tr>';
                         }).join('') + '</tbody></table>';
                 }
 
@@ -120,13 +160,19 @@
 
                 function loadJobs() {
                     return ApiClient.getJSON(ApiClient.getUrl('DownloadTranscoder/Jobs')).then(function (r) {
+                        lastJobs = r;
                         renderActive(r.Active || []);
                         renderHistory(r.History || []);
+                        renderStats(r.Active || [], r.History || [], lastCacheData);
                     });
                 }
 
                 function loadCache() {
-                    return ApiClient.getJSON(ApiClient.getUrl('DownloadTranscoder/Cache')).then(renderCache);
+                    return ApiClient.getJSON(ApiClient.getUrl('DownloadTranscoder/Cache')).then(function (c) {
+                        lastCacheData = c;
+                        renderCache(c);
+                        if (lastJobs) { renderStats(lastJobs.Active || [], lastJobs.History || [], c); }
+                    });
                 }
 
                 var lastCache = 0;
@@ -137,6 +183,7 @@
 
                 page.addEventListener('pageshow', function () {
                     lastCache = 0;
+                    lastHistoryKey = '';
                     tick();
                     clearInterval(timer);
                     timer = setInterval(tick, 2000);

@@ -6,135 +6,207 @@
 </head>
 <body>
     <div id="DownloadTranscoderConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
+        <style>
+            #DownloadTranscoderConfigPage .dt-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75em; margin-bottom: 0.5em; }
+            #DownloadTranscoderConfigPage .dt-head h2 { margin: 0; flex: 1 1 auto; }
+            #DownloadTranscoderConfigPage .dt-lead { opacity: 0.8; margin: 0 0 1em; max-width: 52em; }
+            #DownloadTranscoderConfigPage .dt-tabs { display: flex; gap: 0.25em; border-bottom: 1px solid rgba(128,128,128,0.3); margin: 1em 0 1.5em; overflow-x: auto; }
+            #DownloadTranscoderConfigPage .dt-tab { background: none; border: 0; border-bottom: 3px solid transparent; color: inherit; font: inherit; padding: 0.7em 1em; cursor: pointer; opacity: 0.7; white-space: nowrap; }
+            #DownloadTranscoderConfigPage .dt-tab[aria-selected="true"] { opacity: 1; border-bottom-color: #00a4dc; font-weight: 600; }
+            #DownloadTranscoderConfigPage .dt-panel[hidden] { display: none; }
+            #DownloadTranscoderConfigPage .dt-card { border: 1px solid rgba(128,128,128,0.3); border-radius: 0.5em; margin-bottom: 0.75em; }
+            #DownloadTranscoderConfigPage .dt-card-head { display: flex; align-items: center; gap: 1em; padding: 0.9em 1em; cursor: pointer; }
+            #DownloadTranscoderConfigPage .dt-card-head .dt-title { font-weight: 600; }
+            #DownloadTranscoderConfigPage .dt-card-head .dt-sub { opacity: 0.75; font-size: 0.9em; margin-top: 0.15em; }
+            #DownloadTranscoderConfigPage .dt-card-head .dt-grow { flex: 1 1 auto; min-width: 0; }
+            #DownloadTranscoderConfigPage .dt-chev { transition: transform 0.15s; opacity: 0.6; }
+            #DownloadTranscoderConfigPage .dt-card.open .dt-chev { transform: rotate(90deg); }
+            #DownloadTranscoderConfigPage .dt-card-body { display: none; padding: 0 1em 1em; border-top: 1px solid rgba(128,128,128,0.2); }
+            #DownloadTranscoderConfigPage .dt-card.open .dt-card-body { display: block; }
+            #DownloadTranscoderConfigPage .dt-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14em, 1fr)); gap: 0 1.5em; margin-top: 1em; }
+            #DownloadTranscoderConfigPage .dt-chip { display: inline-block; font-size: 0.8em; padding: 0.15em 0.6em; border-radius: 1em; background: rgba(128,128,128,0.2); white-space: nowrap; }
+            #DownloadTranscoderConfigPage .dt-chip.on { background: rgba(0,164,220,0.25); }
+            #DownloadTranscoderConfigPage .dt-chip.warn { background: rgba(255,152,0,0.3); }
+            #DownloadTranscoderConfigPage .dt-estimate { font-size: 0.9em; opacity: 0.85; margin: -0.5em 0 1em; }
+            #DownloadTranscoderConfigPage .dt-section { margin: 0 0 2em; }
+            #DownloadTranscoderConfigPage .dt-section h3 { margin: 0 0 0.3em; }
+            #DownloadTranscoderConfigPage .dt-section > p { opacity: 0.8; margin: 0 0 1em; }
+            #DownloadTranscoderConfigPage .dt-scroll { overflow-x: auto; }
+            #DownloadTranscoderConfigPage table.dt-table { width: 100%; border-collapse: collapse; }
+            #DownloadTranscoderConfigPage .dt-table th, #DownloadTranscoderConfigPage .dt-table td { text-align: left; padding: 0.5em 0.75em 0.5em 0; vertical-align: middle; }
+            #DownloadTranscoderConfigPage .dt-table tbody tr { border-top: 1px solid rgba(128,128,128,0.25); }
+            #DownloadTranscoderConfigPage .dt-table select { min-width: 9em; }
+            #DownloadTranscoderConfigPage .dt-muted { opacity: 0.7; }
+            #DownloadTranscoderConfigPage .dt-savebar { padding: 1em 0; margin-top: 1em; border-top: 1px solid rgba(128,128,128,0.3); display: flex; gap: 1em; align-items: center; }
+            #DownloadTranscoderConfigPage .dt-savebar .dt-dirty { opacity: 0.8; font-size: 0.9em; }
+            #DownloadTranscoderConfigPage .dt-libs label { display: flex; margin: 0.3em 0; }
+            #DownloadTranscoderConfigPage .dt-actions { display: flex; gap: 0.5em; flex-wrap: wrap; margin-top: 0.5em; }
+        </style>
         <div data-role="content">
             <div class="content-primary">
                 <form id="DownloadTranscoderConfigForm">
-                    <div class="sectionTitleContainer flex align-items-center">
+                    <div class="dt-head">
                         <h2 class="sectionTitle">Download Transcoder</h2>
-                        <a is="emby-linkbutton" class="raised button-alt headerHelpButton emby-button" href="#/configurationpage?name=DownloadTranscoderActivity">Activity and progress</a>
+                        <a is="emby-linkbutton" class="raised button-alt emby-button" href="#/configurationpage?name=DownloadTranscoderActivity">Activity</a>
                     </div>
-                    <p>When a client downloads a video (for example with the download button in the Jellyfin mobile app), this plugin sends a smaller, transcoded MP4 instead of the original file. Add <code>?original=true</code> to a download URL to get the original anyway.</p>
-
-                    <div class="checkboxContainer checkboxContainer-withDescription">
+                    <p class="dt-lead">Sends a smaller copy when an app downloads a video for offline use. Each device gets the quality of its profile.</p>
+                    <div class="checkboxContainer">
                         <label class="emby-checkbox-label">
                             <input id="Enabled" type="checkbox" is="emby-checkbox" />
-                            <span>Transcode downloads</span>
+                            <span>Make downloads smaller</span>
                         </label>
                     </div>
 
-                    <h3>Profiles</h3>
-                    <p>Each download uses one profile. The server picks it in this order: a device you assigned below, then a profile whose "match names" fits the app or device name, then the detected kind of device (phone, tablet, TV, computer), then the "Other" profile.</p>
-                    <div id="Profiles"></div>
-                    <button is="emby-button" type="button" id="AddProfile" class="raised emby-button"><span>Add profile</span></button>
-
-                    <h3>Shared options</h3>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="UseJellyfinHardwareAcceleration" type="checkbox" is="emby-checkbox" />
-                            <span>Encode on the GPU using Jellyfin's hardware acceleration settings</span>
-                        </label>
-                        <div class="fieldDescription checkboxFieldDescription">Uses the type and device set under Dashboard, Playback, Transcoding (NVENC, Quick Sync, VAAPI, VideoToolbox, AMF…) with "Enable hardware encoding" turned on. A profile's libx264 becomes h264 on the GPU and libx265 becomes HEVC on the GPU. If the GPU fails, the CPU takes over. The activity page shows which one was used.</div>
-                    </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="FullGpuPipeline" type="checkbox" is="emby-checkbox" />
-                            <span>Also decode, scale and tone map on the GPU (Intel or AMD with QSV or VAAPI, Linux)</span>
-                        </label>
-                        <div class="fieldDescription checkboxFieldDescription">Much faster for 4K, HEVC and HDR sources. If a file fails this way, it is retried with GPU encoding only, then on the CPU.</div>
-                    </div>
-                    <div class="checkboxContainer">
-                        <label class="emby-checkbox-label">
-                            <input id="KeepAllAudioTracks" type="checkbox" is="emby-checkbox" />
-                            <span>Keep every audio track (otherwise only the default one)</span>
-                        </label>
-                    </div>
-                    <div class="checkboxContainer">
-                        <label class="emby-checkbox-label">
-                            <input id="KeepTextSubtitles" type="checkbox" is="emby-checkbox" />
-                            <span>Embed text subtitles (SRT, ASS, WebVTT). Image subtitles such as PGS are dropped.</span>
-                        </label>
-                    </div>
-                    <div class="checkboxContainer">
-                        <label class="emby-checkbox-label">
-                            <input id="TonemapHdr" type="checkbox" is="emby-checkbox" />
-                            <span>Tone map HDR to SDR so colours look right on any screen</span>
-                        </label>
-                    </div>
-                    <div class="checkboxContainer">
-                        <label class="emby-checkbox-label">
-                            <input id="SkipIfAlreadySmall" type="checkbox" is="emby-checkbox" />
-                            <span>Send the original when it is already within the profile's limits</span>
-                        </label>
+                    <div class="dt-tabs" role="tablist">
+                        <button type="button" class="dt-tab" role="tab" data-tab="profiles" aria-selected="true">Profiles</button>
+                        <button type="button" class="dt-tab" role="tab" data-tab="devices" aria-selected="false">Devices</button>
+                        <button type="button" class="dt-tab" role="tab" data-tab="speed" aria-selected="false">Speed &amp; storage</button>
+                        <button type="button" class="dt-tab" role="tab" data-tab="advanced" aria-selected="false">Advanced</button>
                     </div>
 
-                    <h3>Devices</h3>
-                    <p>Devices that have signed in to this server, what the server detected them as, and which profile their downloads use. Pick a profile to override detection for one device. Save to apply.</p>
-                    <div id="Devices">Loading…</div>
-
-                    <h3>When no smaller copy is ready yet</h3>
-                    <div class="selectContainer">
-                        <label class="selectLabel" for="OnDemand">Behaviour</label>
-                        <select is="emby-select" id="OnDemand" class="emby-select-withcolor emby-select">
-                            <option value="Queue">Prepare it in the background and ask the app to retry (recommended)</option>
-                            <option value="Live">Transcode while downloading, for apps that don't need the size up front</option>
-                            <option value="Original">Send the original (only pre-transcoded copies are used)</option>
-                        </select>
-                        <div class="fieldDescription">The official Jellyfin Android app needs the file size before it starts and retries on its own, so it always gets "retry later" even in live mode. Its download finishes on a later retry, usually within a few minutes. Live downloads have no known size, and some players can't seek in them. Pre-transcoding makes downloads instant.</div>
-                    </div>
-                    <div class="selectContainer">
-                        <label class="selectLabel" for="LiveContainer">Format while transcoding live</label>
-                        <select is="emby-select" id="LiveContainer" class="emby-select-withcolor emby-select">
-                            <option value="mp4">Fragmented MP4 (keeps subtitles)</option>
-                            <option value="mpegts">MPEG-TS (seekable in more Android players, no subtitles)</option>
-                        </select>
+                    <!-- Profiles -->
+                    <div class="dt-panel" data-panel="profiles">
+                        <p class="dt-muted" style="margin-top:0">Click a profile to change it. Devices are matched to profiles automatically; see the Devices tab.</p>
+                        <div id="Profiles"></div>
+                        <button is="emby-button" type="button" id="AddProfile" class="raised emby-button"><span>Add profile</span></button>
                     </div>
 
-                    <h3>Cache and pre-transcoding</h3>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="MaxCacheSizeGb">Cache size limit (GB)</label>
-                        <input id="MaxCacheSizeGb" type="number" is="emby-input" min="0" />
-                        <div class="fieldDescription">Finished transcodes are kept so the next download is instant. 0 turns the cache off.</div>
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="CachePath">Cache folder</label>
-                        <input id="CachePath" type="text" is="emby-input" />
-                        <div class="fieldDescription">Empty uses Jellyfin's cache folder.</div>
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="MaxConcurrentTranscodes">Background transcodes at once</label>
-                        <input id="MaxConcurrentTranscodes" type="number" is="emby-input" min="1" />
-                        <div class="fieldDescription">Takes effect after a server restart.</div>
-                    </div>
-                    <div class="verticalSection">
-                        <h4>Pre-transcode the newest items in these libraries</h4>
-                        <div id="Libraries"></div>
-                        <div class="fieldDescription">The "Pre-transcode downloads" scheduled task runs daily at 3 AM. You can run it now from Dashboard, Scheduled Tasks.</div>
-                    </div>
-                    <div class="selectContainer">
-                        <label class="selectLabel" for="PreTranscodeProfile">Pre-transcode with profile</label>
-                        <select is="emby-select" id="PreTranscodeProfile" class="emby-select-withcolor emby-select"></select>
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="PreTranscodeNewestItems">Newest items per library</label>
-                        <input id="PreTranscodeNewestItems" type="number" is="emby-input" min="1" />
+                    <!-- Devices -->
+                    <div class="dt-panel" data-panel="devices" hidden>
+                        <div class="dt-section">
+                            <p>Every device that has signed in, what the server recognised it as, and the profile its downloads use. Choose a profile to override the automatic choice.</p>
+                            <div id="Devices" class="dt-scroll dt-muted">Loading…</div>
+                        </div>
+                        <div class="dt-section">
+                            <h3>How a profile is chosen</h3>
+                            <p>1. The override above. 2. A profile whose "also use for" names match the app or device. 3. The recognised kind of device. 4. The "Other" profile.</p>
+                        </div>
                     </div>
 
-                    <h3>Advanced</h3>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="ExtraInputArguments">Extra ffmpeg input arguments</label>
-                        <input id="ExtraInputArguments" type="text" is="emby-input" />
-                        <div class="fieldDescription">Placed before -i, e.g. "-hwaccel vaapi -hwaccel_device /dev/dri/renderD128 -hwaccel_output_format vaapi".</div>
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="CustomVideoFilter">Custom video filter</label>
-                        <input id="CustomVideoFilter" type="text" is="emby-input" />
-                        <div class="fieldDescription">Replaces the built-in scale and tone-map filter, e.g. "scale_vaapi=w=-2:h={height}" for VAAPI. {height} is the maximum height.</div>
+                    <!-- Speed & storage -->
+                    <div class="dt-panel" data-panel="speed" hidden>
+                        <div class="dt-section">
+                            <h3>GPU <span id="GpuStatus" class="dt-chip"></span></h3>
+                            <p id="GpuHint"></p>
+                            <div class="checkboxContainer">
+                                <label class="emby-checkbox-label">
+                                    <input id="UseJellyfinHardwareAcceleration" type="checkbox" is="emby-checkbox" />
+                                    <span>Encode on the GPU</span>
+                                </label>
+                            </div>
+                            <div class="checkboxContainer checkboxContainer-withDescription">
+                                <label class="emby-checkbox-label">
+                                    <input id="FullGpuPipeline" type="checkbox" is="emby-checkbox" />
+                                    <span>Also decode, resize and tone map on the GPU</span>
+                                </label>
+                                <div class="fieldDescription checkboxFieldDescription">Intel or AMD with Quick Sync or VAAPI on Linux. Falls back automatically if a file can't be handled this way.</div>
+                            </div>
+                            <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="MaxConcurrentTranscodes">Transcodes at the same time</label>
+                                <input id="MaxConcurrentTranscodes" type="number" is="emby-input" min="1" max="8" />
+                                <div class="fieldDescription">Takes effect after a server restart.</div>
+                            </div>
+                        </div>
+
+                        <div class="dt-section">
+                            <h3>Prepare ahead of time</h3>
+                            <p>A nightly task (3 AM) makes small copies of the newest items, so downloads start instantly.</p>
+                            <div id="Libraries" class="dt-libs"></div>
+                            <div class="dt-grid">
+                                <div class="selectContainer">
+                                    <label class="selectLabel" for="PreTranscodeProfile">Using profile</label>
+                                    <select is="emby-select" id="PreTranscodeProfile" class="emby-select-withcolor emby-select"></select>
+                                </div>
+                                <div class="inputContainer">
+                                    <label class="inputLabel inputLabelUnfocused" for="PreTranscodeNewestItems">Newest items per library</label>
+                                    <input id="PreTranscodeNewestItems" type="number" is="emby-input" min="1" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="dt-section">
+                            <h3>Storage</h3>
+                            <div class="dt-grid">
+                                <div class="inputContainer">
+                                    <label class="inputLabel inputLabelUnfocused" for="MaxCacheSizeGb">Keep up to (GB)</label>
+                                    <input id="MaxCacheSizeGb" type="number" is="emby-input" min="0" />
+                                    <div class="fieldDescription">Small copies are kept so the next download is instant. Oldest are removed first. 0 keeps nothing.</div>
+                                </div>
+                                <div class="inputContainer">
+                                    <label class="inputLabel inputLabelUnfocused" for="CachePath">Folder</label>
+                                    <input id="CachePath" type="text" is="emby-input" placeholder="Jellyfin's cache folder" />
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
-                    <div>
-                        <button is="emby-button" type="submit" class="raised button-submit block emby-button">
-                            <span>Save</span>
-                        </button>
+                    <!-- Advanced -->
+                    <div class="dt-panel" data-panel="advanced" hidden>
+                        <div class="dt-section">
+                            <h3>What goes into the small copy</h3>
+                            <div class="checkboxContainer">
+                                <label class="emby-checkbox-label">
+                                    <input id="KeepAllAudioTracks" type="checkbox" is="emby-checkbox" />
+                                    <span>All audio languages (otherwise only the default one)</span>
+                                </label>
+                            </div>
+                            <div class="checkboxContainer">
+                                <label class="emby-checkbox-label">
+                                    <input id="KeepTextSubtitles" type="checkbox" is="emby-checkbox" />
+                                    <span>Text subtitles (picture-based subtitles can't be kept)</span>
+                                </label>
+                            </div>
+                            <div class="checkboxContainer">
+                                <label class="emby-checkbox-label">
+                                    <input id="TonemapHdr" type="checkbox" is="emby-checkbox" />
+                                    <span>Convert HDR to normal colours</span>
+                                </label>
+                            </div>
+                            <div class="checkboxContainer">
+                                <label class="emby-checkbox-label">
+                                    <input id="SkipIfAlreadySmall" type="checkbox" is="emby-checkbox" />
+                                    <span>Send the original if it's already small enough</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="dt-section">
+                            <h3>When a small copy isn't ready yet</h3>
+                            <div class="selectContainer">
+                                <label class="selectLabel" for="OnDemand">Behaviour</label>
+                                <select is="emby-select" id="OnDemand" class="emby-select-withcolor emby-select">
+                                    <option value="Queue">Prepare it, and let the app retry (recommended)</option>
+                                    <option value="Live">Transcode while sending (apps that don't resume)</option>
+                                    <option value="Original">Send the original</option>
+                                </select>
+                            </div>
+                            <div class="selectContainer">
+                                <label class="selectLabel" for="LiveContainer">Format while sending live</label>
+                                <select is="emby-select" id="LiveContainer" class="emby-select-withcolor emby-select">
+                                    <option value="mp4">MP4 (keeps subtitles)</option>
+                                    <option value="mpegts">MPEG-TS (seeks better in some players)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="dt-section">
+                            <h3>ffmpeg</h3>
+                            <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="ExtraInputArguments">Extra input arguments</label>
+                                <input id="ExtraInputArguments" type="text" is="emby-input" />
+                            </div>
+                            <div class="inputContainer">
+                                <label class="inputLabel inputLabelUnfocused" for="CustomVideoFilter">Custom video filter</label>
+                                <input id="CustomVideoFilter" type="text" is="emby-input" />
+                                <div class="fieldDescription">Replaces the built-in resize and HDR filters. {height} is the profile's height.</div>
+                            </div>
+                            <p class="dt-muted">Tip: add <code>?original=true</code> to a download link to always get the original file, or <code>?profile=Tablet</code> to force a profile.</p>
+                        </div>
+                    </div>
+
+                    <div class="dt-savebar">
+                        <button is="emby-button" type="submit" class="raised button-submit emby-button"><span>Save</span></button>
+                        <span id="Dirty" class="dt-dirty" hidden>Unsaved changes</span>
                     </div>
                 </form>
             </div>
@@ -146,69 +218,105 @@
                 var textFields = ['CachePath', 'ExtraInputArguments', 'CustomVideoFilter', 'OnDemand', 'LiveContainer'];
                 var numberFields = ['MaxCacheSizeGb', 'MaxConcurrentTranscodes', 'PreTranscodeNewestItems'];
                 var boolFields = ['Enabled', 'UseJellyfinHardwareAcceleration', 'FullGpuPipeline', 'KeepAllAudioTracks', 'KeepTextSubtitles', 'TonemapHdr', 'SkipIfAlreadySmall'];
-                var kinds = [['Phone', 'Phone'], ['Tablet', 'Tablet'], ['Tv', 'TV'], ['Desktop', 'Computer'], ['Other', 'Other / unknown']];
+                var kinds = [['Phone', 'Phones'], ['Tablet', 'Tablets'], ['Tv', 'TVs'], ['Desktop', 'Computers'], ['Other', 'Anything else']];
+                var heights = [360, 480, 540, 720, 1080, 1440, 2160];
+                var gpuNames = { qsv: 'Intel Quick Sync', vaapi: 'VAAPI', nvenc: 'NVIDIA NVENC', amf: 'AMD AMF', videotoolbox: 'Apple VideoToolbox', rkmpp: 'Rockchip', v4l2m2m: 'V4L2' };
                 var profiles = [];
                 var assignments = {};
                 var devices = [];
+                var openCards = {};
+                var status = null;
 
                 function el(id) { return page.querySelector('#' + id); }
                 function esc(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
+                function dirty() { el('Dirty').hidden = false; }
 
-                function readProfiles() {
-                    page.querySelectorAll('.profileBox').forEach(function (box) {
-                        var p = profiles[parseInt(box.getAttribute('data-index'), 10)];
-                        box.querySelectorAll('[data-field]').forEach(function (input) {
-                            var f = input.getAttribute('data-field');
-                            if (input.type === 'checkbox') { p[f] = input.checked; }
-                            else if (input.type === 'number') { p[f] = parseInt(input.value, 10) || 0; }
-                            else { p[f] = input.value; }
-                        });
-                    });
+                function gbPerHour(p) {
+                    var audioTracks = 1.2;
+                    var kbps = (p.VideoBitrateKbps || 0) + (p.AudioBitrateKbps || 0) * audioTracks;
+                    return kbps * 3600 / 8 / 1e6;
+                }
+                function codecName(enc) {
+                    enc = (enc || '').toLowerCase();
+                    if (enc.indexOf('265') >= 0 || enc.indexOf('hevc') >= 0) { return 'HEVC'; }
+                    if (enc.indexOf('264') >= 0) { return 'H.264'; }
+                    return enc || 'H.264';
+                }
+                function channelsName(c) { return c === 1 ? 'mono' : c === 2 ? 'stereo' : c === 6 ? '5.1' : c === 8 ? '7.1' : c + ' ch'; }
+                function kindLabel(k) { for (var i = 0; i < kinds.length; i++) { if (kinds[i][0] === k) { return kinds[i][1]; } } return k; }
+                function summary(p) {
+                    if (!p.Transcode) { return 'Sends the original file'; }
+                    return p.MaxHeight + 'p · ' + (p.VideoBitrateKbps / 1000).toFixed(1).replace('.0', '') + ' Mbit/s · ' + codecName(p.VideoEncoder) +
+                        ' · ' + channelsName(p.AudioChannels) + ' · about ' + gbPerHour(p).toFixed(1) + ' GB per hour';
+                }
+                function usedFor(p) {
+                    var s = kindLabel(p.DeviceKind);
+                    if (p.MatchNames) { s += ', ' + p.MatchNames; }
+                    var pinned = Object.keys(assignments).filter(function (id) { return assignments[id] === p.Name; }).length;
+                    if (pinned) { s += ', ' + pinned + ' pinned device' + (pinned > 1 ? 's' : ''); }
+                    return s;
                 }
 
-                function field(label, f, value, type, help) {
+                function select(field, options, value) {
+                    var found = options.some(function (o) { return String(o[0]) === String(value); });
+                    if (!found) { options = options.concat([[value, String(value)]]); }
+                    return '<select is="emby-select" data-field="' + field + '">' + options.map(function (o) {
+                        return '<option value="' + esc(o[0]) + '"' + (String(o[0]) === String(value) ? ' selected' : '') + '>' + esc(o[1]) + '</option>';
+                    }).join('') + '</select>';
+                }
+                function selectBox(label, inner, help) {
+                    return '<div class="selectContainer"><label class="selectLabel">' + label + '</label>' + inner + (help ? '<div class="fieldDescription">' + help + '</div>' : '') + '</div>';
+                }
+                function input(label, field, value, type, help, extra) {
                     return '<div class="inputContainer"><label class="inputLabel">' + label + '</label>' +
-                        '<input is="emby-input" type="' + type + '" data-field="' + f + '" value="' + esc(value) + '" />' +
+                        '<input is="emby-input" type="' + type + '" data-field="' + field + '" value="' + esc(value) + '"' + (extra || '') + ' />' +
                         (help ? '<div class="fieldDescription">' + help + '</div>' : '') + '</div>';
+                }
+
+                function readProfiles() {
+                    page.querySelectorAll('.dt-card[data-index]').forEach(function (card) {
+                        var p = profiles[parseInt(card.getAttribute('data-index'), 10)];
+                        card.querySelectorAll('[data-field]').forEach(function (inp) {
+                            var f = inp.getAttribute('data-field');
+                            if (inp.type === 'checkbox') { p[f] = inp.getAttribute('data-invert') ? !inp.checked : inp.checked; }
+                            else if (['MaxHeight', 'VideoBitrateKbps', 'AudioBitrateKbps', 'AudioChannels'].indexOf(f) >= 0) { p[f] = parseInt(inp.value, 10) || 0; }
+                            else { p[f] = inp.value; }
+                        });
+                    });
                 }
 
                 function renderProfiles() {
                     el('Profiles').innerHTML = profiles.map(function (p, i) {
-                        var kindOptions = kinds.map(function (k) {
-                            return '<option value="' + k[0] + '"' + (p.DeviceKind === k[0] ? ' selected' : '') + '>' + k[1] + '</option>';
-                        }).join('');
-                        return '<div class="profileBox paperList" data-index="' + i + '" style="padding:1em;margin-bottom:1em;">' +
-                            field('Profile name', 'Name', p.Name, 'text') +
-                            '<div class="selectContainer"><label class="selectLabel">Used for detected</label><select is="emby-select" data-field="DeviceKind">' + kindOptions + '</select></div>' +
-                            field('Also use for these app or device names', 'MatchNames', p.MatchNames, 'text', 'Comma separated, partial match, e.g. "Findroid, Pixel Tablet".') +
-                            '<div class="checkboxContainer"><label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" data-field="Transcode"' + (p.Transcode ? ' checked' : '') + ' /><span>Transcode (untick to send the original file)</span></label></div>' +
-                            field('Maximum height (pixels)', 'MaxHeight', p.MaxHeight, 'number', '480, 720, 1080 or 2160. Never upscales.') +
-                            field('Video bitrate (kbit/s)', 'VideoBitrateKbps', p.VideoBitrateKbps, 'number', 'About 0.45 GB per hour per 1000 kbit/s.') +
-                            field('Video encoder', 'VideoEncoder', p.VideoEncoder, 'text', 'libx264 for H.264 (plays everywhere) or libx265 for HEVC (smaller). These run on the GPU when GPU encoding is on. To force a specific GPU encoder, enter it directly, for example h264_nvenc.') +
-                            field('Encoder preset', 'EncoderPreset', p.EncoderPreset, 'text', 'ultrafast to veryslow. Only used when encoding on the CPU.') +
-                            field('Audio bitrate per track (kbit/s, AAC)', 'AudioBitrateKbps', p.AudioBitrateKbps, 'number') +
-                            field('Audio channels', 'AudioChannels', p.AudioChannels, 'number', '2 = stereo, 6 = 5.1') +
-                            '<button is="emby-button" type="button" class="raised emby-button removeProfile" data-index="' + i + '"><span>Remove profile</span></button>' +
-                            '</div>';
+                        var open = openCards[i] ? ' open' : '';
+                        return '<div class="dt-card' + open + '" data-index="' + i + '">' +
+                            '<div class="dt-card-head" data-toggle="' + i + '">' +
+                                '<div class="dt-grow"><div class="dt-title">' + esc(p.Name) + '</div>' +
+                                '<div class="dt-sub">' + esc(summary(p)) + '</div>' +
+                                '<div class="dt-sub">For ' + esc(usedFor(p)) + '</div></div>' +
+                                '<span class="dt-chip' + (p.Transcode ? ' on' : '') + '">' + (p.Transcode ? 'Smaller' : 'Original') + '</span>' +
+                                '<span class="dt-chev material-icons">chevron_right</span>' +
+                            '</div>' +
+                            '<div class="dt-card-body">' +
+                                '<div class="checkboxContainer" style="margin-top:1em"><label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" data-field="Transcode"' + (p.Transcode ? ' checked' : '') + ' /><span>Make downloads smaller</span></label></div>' +
+                                '<div class="dt-grid">' +
+                                    input('Name', 'Name', p.Name, 'text') +
+                                    selectBox('Used for', select('DeviceKind', kinds, p.DeviceKind)) +
+                                '</div>' +
+                                '<div class="dt-grid">' +
+                                    selectBox('Resolution', select('MaxHeight', heights.map(function (h) { return [h, h + 'p']; }), p.MaxHeight), 'Smaller videos are never enlarged.') +
+                                    input('Video bitrate (kbit/s)', 'VideoBitrateKbps', p.VideoBitrateKbps, 'number', '', ' min="200" step="100"') +
+                                    selectBox('Video format', select('VideoEncoder', [['libx264', 'H.264 (plays everywhere)'], ['libx265', 'HEVC (smaller, newer devices)']], p.VideoEncoder)) +
+                                    selectBox('Audio', select('AudioChannels', [[2, 'Stereo'], [6, '5.1 surround'], [1, 'Mono']], p.AudioChannels)) +
+                                    input('Audio bitrate (kbit/s)', 'AudioBitrateKbps', p.AudioBitrateKbps, 'number', '', ' min="32" step="16"') +
+                                '</div>' +
+                                '<div class="dt-estimate">' + esc(p.Transcode ? 'About ' + gbPerHour(p).toFixed(1) + ' GB per hour of video.' : '') + '</div>' +
+                                '<div class="dt-grid">' +
+                                    input('Also use for these apps or devices', 'MatchNames', p.MatchNames, 'text', 'Comma separated, e.g. "Findroid, Pixel Tablet"') +
+                                    input('CPU encoder speed', 'EncoderPreset', p.EncoderPreset, 'text', 'Only for CPU encoding: ultrafast … veryslow') +
+                                '</div>' +
+                                '<div class="dt-actions"><button is="emby-button" type="button" class="raised emby-button" data-remove="' + i + '"><span>Delete profile</span></button></div>' +
+                            '</div></div>';
                     }).join('');
-                    page.querySelectorAll('.profileBox [data-field="Name"]').forEach(function (input) {
-                        input.addEventListener('change', function () {
-                            var i = parseInt(input.closest('.profileBox').getAttribute('data-index'), 10);
-                            var oldName = profiles[i].Name;
-                            var pre = el('PreTranscodeProfile').value;
-                            readProfiles();
-                            Object.keys(assignments).forEach(function (id) { if (assignments[id] === oldName) { assignments[id] = profiles[i].Name; } });
-                            renderDevices();
-                            el('PreTranscodeProfile').innerHTML = profileOptions(pre === oldName ? profiles[i].Name : pre, false);
-                        });
-                    });
-                    page.querySelectorAll('.removeProfile').forEach(function (b) {
-                        b.addEventListener('click', function () {
-                            readProfiles();
-                            profiles.splice(parseInt(b.getAttribute('data-index'), 10), 1);
-                            renderAll();
-                        });
-                    });
                 }
 
                 function profileOptions(selected, includeAuto) {
@@ -219,39 +327,121 @@
                 }
 
                 function renderDevices() {
-                    if (!devices.length) { el('Devices').innerHTML = 'No devices yet.'; return; }
-                    el('Devices').innerHTML = '<table class="detailTable" style="width:100%"><thead><tr><th style="text-align:left">Device</th><th style="text-align:left">App</th><th style="text-align:left">User</th><th style="text-align:left">Detected</th><th style="text-align:left">Profile now</th><th style="text-align:left">Override</th></tr></thead><tbody>' +
+                    var box = el('Devices');
+                    if (!devices.length) { box.innerHTML = 'No devices have signed in yet.'; box.className = 'dt-scroll dt-muted'; return; }
+                    box.className = 'dt-scroll';
+                    box.innerHTML = '<table class="dt-table"><thead><tr><th>Device</th><th>Recognised as</th><th>Profile</th></tr></thead><tbody>' +
                         devices.map(function (d) {
-                            return '<tr><td>' + esc(d.Name) + '</td><td>' + esc(d.AppName) + '</td><td>' + esc(d.LastUserName) + '</td><td>' + esc(d.DetectedKind) + '</td><td>' + esc(d.Profile) + '</td>' +
-                                '<td><select is="emby-select" class="deviceAssign" data-id="' + esc(d.Id) + '">' + profileOptions(assignments[d.Id] || '', true) + '</select></td></tr>';
+                            return '<tr><td><div>' + esc(d.Name) + '</div><div class="dt-muted" style="font-size:0.85em">' + esc(d.AppName) + (d.LastUserName ? ' · ' + esc(d.LastUserName) : '') + '</div></td>' +
+                                '<td>' + esc(kindLabel(d.DetectedKind).replace(/s$/, '')) + '</td>' +
+                                '<td><select is="emby-select" class="deviceAssign" data-id="' + esc(d.Id) + '">' +
+                                    '<option value="">Automatic (' + esc(d.AutoProfile || d.Profile) + ')</option>' + profileOptions(assignments[d.Id] || '', false) + '</select></td></tr>';
                         }).join('') + '</tbody></table>';
-                    page.querySelectorAll('.deviceAssign').forEach(function (s) {
-                        s.addEventListener('change', function () {
-                            if (s.value) { assignments[s.getAttribute('data-id')] = s.value; } else { delete assignments[s.getAttribute('data-id')]; }
-                        });
-                    });
                 }
 
-                function renderAll(preSelected) {
+                function renderPreProfile(current) {
+                    el('PreTranscodeProfile').innerHTML = profileOptions(current || el('PreTranscodeProfile').value, false);
+                }
+
+                function renderGpu() {
+                    var chip = el('GpuStatus');
+                    if (!status) { chip.textContent = ''; return; }
+                    var type = (status.HardwareAccelerationType || 'none').toLowerCase();
+                    var on = type !== 'none' && status.HardwareEncodingEnabled;
+                    chip.textContent = on ? (gpuNames[type] || type) : 'Not set up';
+                    chip.className = 'dt-chip ' + (on ? 'on' : 'warn');
+                    el('GpuHint').innerHTML = on
+                        ? 'Uses the GPU from Dashboard → Playback → Transcoding. If it fails on a file, the CPU takes over.'
+                        : 'Turn on hardware acceleration and "Enable hardware encoding" under Dashboard → Playback → Transcoding to use the GPU. Until then, the CPU is used.';
+                }
+
+                function renderAll() {
                     renderProfiles();
                     renderDevices();
-                    var current = preSelected || el('PreTranscodeProfile').value;
-                    el('PreTranscodeProfile').innerHTML = profileOptions(current, false);
+                    renderPreProfile();
                 }
 
-                function loadDevices() {
-                    return ApiClient.getJSON(ApiClient.getUrl('DownloadTranscoder/Devices')).then(function (d) { devices = d; }, function () { devices = []; });
-                }
+                // Tabs
+                page.querySelectorAll('.dt-tab').forEach(function (tab) {
+                    tab.addEventListener('click', function () {
+                        page.querySelectorAll('.dt-tab').forEach(function (t) { t.setAttribute('aria-selected', t === tab ? 'true' : 'false'); });
+                        page.querySelectorAll('.dt-panel').forEach(function (panel) { panel.hidden = panel.getAttribute('data-panel') !== tab.getAttribute('data-tab'); });
+                    });
+                });
+
+                // Profile cards: one delegated listener
+                el('Profiles').addEventListener('click', function (e) {
+                    var toggle = e.target.closest('[data-toggle]');
+                    if (toggle) {
+                        var i = parseInt(toggle.getAttribute('data-toggle'), 10);
+                        openCards[i] = !openCards[i];
+                        toggle.parentNode.classList.toggle('open', !!openCards[i]);
+                        return;
+                    }
+                    var remove = e.target.closest('[data-remove]');
+                    if (remove) {
+                        readProfiles();
+                        var idx = parseInt(remove.getAttribute('data-remove'), 10);
+                        if (!confirm('Delete the profile "' + profiles[idx].Name + '"?')) { return; }
+                        profiles.splice(idx, 1);
+                        openCards = {};
+                        dirty();
+                        renderAll();
+                    }
+                });
+                el('Profiles').addEventListener('change', function (e) {
+                    var card = e.target.closest('.dt-card');
+                    if (!card) { return; }
+                    var i = parseInt(card.getAttribute('data-index'), 10);
+                    var oldName = profiles[i].Name;
+                    readProfiles();
+                    if (oldName !== profiles[i].Name) {
+                        Object.keys(assignments).forEach(function (id) { if (assignments[id] === oldName) { assignments[id] = profiles[i].Name; } });
+                        if (el('PreTranscodeProfile').value === oldName) { renderPreProfile(profiles[i].Name); } else { renderPreProfile(); }
+                        renderDevices();
+                    }
+                    var p = profiles[i];
+                    card.querySelector('.dt-title').textContent = p.Name;
+                    var subs = card.querySelectorAll('.dt-sub');
+                    subs[0].textContent = summary(p);
+                    subs[1].textContent = 'For ' + usedFor(p);
+                    var chip = card.querySelector('.dt-chip');
+                    chip.textContent = p.Transcode ? 'Smaller' : 'Original';
+                    chip.className = 'dt-chip' + (p.Transcode ? ' on' : '');
+                    card.querySelector('.dt-estimate').textContent = p.Transcode ? 'About ' + gbPerHour(p).toFixed(1) + ' GB per hour of video.' : '';
+                    dirty();
+                });
+                el('Devices').addEventListener('change', function (e) {
+                    var s = e.target.closest('.deviceAssign');
+                    if (!s) { return; }
+                    if (s.value) { assignments[s.getAttribute('data-id')] = s.value; } else { delete assignments[s.getAttribute('data-id')]; }
+                    readProfiles();
+                    renderProfiles();
+                    dirty();
+                });
+                page.querySelector('form').addEventListener('change', function (e) {
+                    if (!e.target.closest('#Profiles') && !e.target.closest('#Devices')) { dirty(); }
+                });
 
                 el('AddProfile').addEventListener('click', function () {
                     readProfiles();
                     profiles.push({ Name: 'New profile', DeviceKind: 'Other', MatchNames: '', Transcode: true, MaxHeight: 720, VideoBitrateKbps: 2000, VideoEncoder: 'libx264', EncoderPreset: 'veryfast', AudioBitrateKbps: 128, AudioChannels: 2 });
+                    openCards = {};
+                    openCards[profiles.length - 1] = true;
+                    dirty();
                     renderAll();
                 });
 
+                function loadDevices() {
+                    return ApiClient.getJSON(ApiClient.getUrl('DownloadTranscoder/Devices')).then(function (d) { devices = d; }, function () { devices = []; });
+                }
+                function loadStatus() {
+                    return ApiClient.getJSON(ApiClient.getUrl('DownloadTranscoder/Status')).then(function (s) { status = s; }, function () { status = null; });
+                }
+
                 page.addEventListener('pageshow', function () {
                     Dashboard.showLoadingMsg();
-                    Promise.all([ApiClient.getPluginConfiguration(pluginId), ApiClient.getVirtualFolders(), loadDevices()]).then(function (r) {
+                    Promise.all([ApiClient.getPluginConfiguration(pluginId), ApiClient.getVirtualFolders(), loadDevices(), loadStatus()]).then(function (r) {
                         var config = r[0];
                         var folders = r[1];
                         textFields.forEach(function (f) { el(f).value = config[f] == null ? '' : config[f]; });
@@ -260,12 +450,16 @@
                         profiles = config.Profiles || [];
                         assignments = {};
                         (config.DeviceAssignments || []).forEach(function (a) { assignments[a.DeviceId] = a.Profile; });
-                        renderAll(config.PreTranscodeProfile);
+                        openCards = {};
+                        renderAll();
+                        renderPreProfile(config.PreTranscodeProfile);
+                        renderGpu();
                         var selected = config.PreTranscodeLibraryIds || [];
-                        el('Libraries').innerHTML = folders.map(function (lib) {
+                        el('Libraries').innerHTML = folders.length ? folders.map(function (lib) {
                             var checked = selected.indexOf(lib.ItemId) >= 0 ? ' checked' : '';
                             return '<label class="emby-checkbox-label"><input type="checkbox" is="emby-checkbox" class="libraryCheck" data-id="' + lib.ItemId + '"' + checked + ' /><span>' + esc(lib.Name) + '</span></label>';
-                        }).join('<br/>');
+                        }).join('') : '<span class="dt-muted">No libraries.</span>';
+                        el('Dirty').hidden = true;
                         Dashboard.hideLoadingMsg();
                     });
                 });
@@ -284,7 +478,8 @@
                         config.PreTranscodeLibraryIds = Array.prototype.map.call(page.querySelectorAll('.libraryCheck:checked'), function (c) { return c.getAttribute('data-id'); });
                         ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
                             Dashboard.processPluginConfigurationUpdateResult(result);
-                            loadDevices().then(function () { renderDevices(); });
+                            el('Dirty').hidden = true;
+                            loadDevices().then(renderDevices);
                         });
                     });
                     return false;

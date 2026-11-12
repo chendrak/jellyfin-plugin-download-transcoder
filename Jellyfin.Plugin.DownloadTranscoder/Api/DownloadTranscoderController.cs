@@ -5,6 +5,8 @@ using System.Linq;
 using Jellyfin.Data.Queries;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Common.Api;
+using MediaBrowser.Common.Configuration;
+using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Devices;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -22,6 +24,7 @@ public class DownloadTranscoderController : ControllerBase
     private readonly IDeviceManager _deviceManager;
     private readonly JobTracker _jobs;
     private readonly ILibraryManager _libraryManager;
+    private readonly IServerConfigurationManager _serverConfig;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DownloadTranscoderController"/> class.
@@ -29,11 +32,28 @@ public class DownloadTranscoderController : ControllerBase
     /// <param name="deviceManager">Device manager.</param>
     /// <param name="jobs">Job tracker.</param>
     /// <param name="libraryManager">Library manager.</param>
-    public DownloadTranscoderController(IDeviceManager deviceManager, JobTracker jobs, ILibraryManager libraryManager)
+    /// <param name="serverConfig">Server configuration.</param>
+    public DownloadTranscoderController(IDeviceManager deviceManager, JobTracker jobs, ILibraryManager libraryManager, IServerConfigurationManager serverConfig)
     {
+        _serverConfig = serverConfig;
         _deviceManager = deviceManager;
         _jobs = jobs;
         _libraryManager = libraryManager;
+    }
+
+    /// <summary>
+    /// Reports Jellyfin's hardware acceleration settings, for the settings page.
+    /// </summary>
+    /// <returns>The status.</returns>
+    [HttpGet("Status")]
+    public ActionResult<StatusResponse> GetStatus()
+    {
+        var options = _serverConfig.GetEncodingOptions();
+        return Ok(new StatusResponse
+        {
+            HardwareAccelerationType = options.HardwareAccelerationType.ToString(),
+            HardwareEncodingEnabled = options.EnableHardwareEncoding
+        });
     }
 
     /// <summary>
@@ -118,7 +138,8 @@ public class DownloadTranscoderController : ControllerBase
                 AppName = d.AppName ?? string.Empty,
                 LastUserName = d.LastUserName ?? string.Empty,
                 DetectedKind = DeviceDetector.Detect(d.AppName, d.Name, null).ToString(),
-                Profile = Describe(DeviceDetector.SelectProfile(cfg, d.Id, d.AppName, d.Name, null))
+                Profile = Describe(DeviceDetector.SelectProfile(cfg, d.Id, d.AppName, d.Name, null)),
+                AutoProfile = Describe(DeviceDetector.SelectProfile(cfg, null, d.AppName, d.Name, null))
             })
             .ToList());
     }
@@ -151,6 +172,9 @@ public class DeviceProfileInfo
 
     /// <summary>Gets or sets the profile that applies.</summary>
     public string Profile { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the profile automatic detection would pick.</summary>
+    public string AutoProfile { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -202,4 +226,16 @@ public class CacheEntry
 
     /// <summary>Gets or sets when it was last downloaded.</summary>
     public DateTime LastUsedUtc { get; set; }
+}
+
+/// <summary>
+/// Jellyfin's hardware acceleration settings.
+/// </summary>
+public class StatusResponse
+{
+    /// <summary>Gets or sets the hardware acceleration type, e.g. "qsv" or "none".</summary>
+    public string HardwareAccelerationType { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets a value indicating whether hardware encoding is enabled in Jellyfin.</summary>
+    public bool HardwareEncodingEnabled { get; set; }
 }
