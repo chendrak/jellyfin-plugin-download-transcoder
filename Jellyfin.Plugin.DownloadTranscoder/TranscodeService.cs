@@ -176,6 +176,104 @@ public sealed class TranscodeService : IDisposable
     public bool IsTranscoding(BaseItem item, TranscodeProfile profile) => _inFlight.ContainsKey(GetCachePath(item, profile));
 
     /// <summary>
+    /// Transcodes two short generated clips (1080p H.264, and 4K 10-bit HEVC like many modern sources)
+    /// through every encoder this server would try, and reports which ones work and how fast.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>One result per clip and encoder.</returns>
+    public async Task<IReadOnlyList<GpuTestResult>> TestGpuAsync(CancellationToken cancellationToken)
+    {
+        var results = new List<GpuTestResult>();
+        var dir = Path.Combine(CacheDir, "gpu-test");
+        Directory.CreateDirectory(dir);
+        var profile = Config.Profiles.FirstOrDefault(p => p.Transcode) ?? TranscodeProfile.Defaults()[0];
+        var samples = new (string Name, string File, string Codec, int Height, string[] Encode)[]
+        {
+            ("1080p H.264", Path.Combine(dir, "sample-h264.mkv"), "h264", 1080, ["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p"]),
+            ("4K HEVC 10-bit", Path.Combine(dir, "sample-hevc10.mkv"), "hevc", 2160, ["-c:v", "libx265", "-preset", "ultrafast", "-pix_fmt", "yuv420p10le", "-x265-params", "log-level=error"])
+        };
+
+        try
+        {
+            foreach (var sample in samples)
+            {
+                var size = sample.Height == 2160 ? "3840x2160" : "1920x1080";
+                var make = new List<string> { "-hide_banner", "-nostdin", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=" + size + ":rate=24:duration=4" };
+                make.AddRange(sample.Encode);
+                make.Add(sample.File);
+                var (made, makeLog) = await RunToCompletionAsync(make, cancellationToken).ConfigureAwait(false);
+                if (!made)
+                {
+                    results.Add(new GpuTestResult { Sample = sample.Name, Encoder = "(making the test clip)", Ok = false, Error = makeLog });
+                    continue;
+                }
+
+                var item = new MediaBrowser.Controller.Entities.Movies.Movie { Path = sample.File, Id = Guid.NewGuid(), RunTimeTicks = TimeSpan.FromSeconds(4).Ticks };
+                var streams = new List<MediaStream> { new() { Index = 0, Type = MediaStreamType.Video, Codec = sample.Codec, Height = sample.Height } };
+                foreach (var encoder in EncoderChain(profile))
+                {
+                    var output = Path.Combine(dir, "out.mp4");
+                    var args = BuildArguments(item, streams, output, LiveFormat.File, profile, null, encoder);
+                    using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    timeout.CancelAfter(TimeSpan.FromSeconds(90));
+                    var watch = Stopwatch.StartNew();
+                    bool ok;
+                    string log;
+                    try
+                    {
+                        (ok, log) = await RunToCompletionAsync(args, timeout.Token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                    {
+                        (ok, log) = (false, "Timed out after 90 seconds.");
+                    }
+
+                    watch.Stop();
+                    results.Add(new GpuTestResult
+                    {
+                        Sample = sample.Name,
+                        Encoder = encoder.Label,
+                        IsHardware = encoder.IsHardware,
+                        FullPipeline = encoder.FullPipeline,
+                        Ok = ok,
+                        Seconds = watch.Elapsed.TotalSeconds,
+                        Speed = ok && watch.Elapsed.TotalSeconds > 0 ? 4 / watch.Elapsed.TotalSeconds : 0,
+                        Error = ok ? null : log
+                    });
+                    TryDelete(output);
+                }
+            }
+        }
+        finally
+        {
+            foreach (var sample in samples)
+            {
+                TryDelete(sample.File);
+            }
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Transcodes again: forgets an earlier failure, deletes any cached copy, and queues a new job.
+    /// </summary>
+    /// <param name="item">The item.</param>
+    /// <param name="profile">The quality profile.</param>
+    public void Retry(BaseItem item, TranscodeProfile profile)
+    {
+        var target = GetCachePath(item, profile);
+        if (_inFlight.ContainsKey(target))
+        {
+            return;
+        }
+
+        _failed.TryRemove(target, out _);
+        TryDelete(target);
+        Queue(item, profile, "Retried from the activity page");
+    }
+
+    /// <summary>
     /// Starts a background transcode into the cache.
     /// </summary>
     /// <param name="item">The item.</param>
@@ -196,7 +294,9 @@ public sealed class TranscodeService : IDisposable
     /// <param name="requestedBy">Who asked, for the activity page.</param>
     public async Task StreamLiveAsync(BaseItem item, TranscodeProfile profile, HttpContext context, string requestedBy = "")
     {
-        var job = _jobs.Add(NewJob(item, profile, requestedBy, live: true));
+        var job = NewJob(item, profile, requestedBy, live: true);
+        job.Cancellation = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
+        _jobs.Add(job);
         job.Encoder = EncoderChain(profile)[0].Label;
         job.State = JobState.Running;
         job.StartedUtc = DateTime.UtcNow;
@@ -222,7 +322,7 @@ public sealed class TranscodeService : IDisposable
             tee = new FileStream(partial, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 16, true);
         }
 
-        var aborted = context.RequestAborted;
+        var aborted = job.Cancellation.Token;
         using var process = StartFfmpeg(args, redirectStdout: true);
         var stderr = CollectStderrAsync(process);
         var ok = false;
@@ -256,8 +356,8 @@ public sealed class TranscodeService : IDisposable
         }
         catch (OperationCanceledException)
         {
-            _logger.LogInformation("Client stopped downloading {Name}; stopping ffmpeg", item.Name);
-            _jobs.Finish(job, JobState.Cancelled, "The app stopped downloading.");
+            _logger.LogInformation("Download of {Name} stopped; stopping ffmpeg", item.Name);
+            _jobs.Finish(job, JobState.Cancelled, job.CancelRequested ? "Cancelled from the activity page." : "The app stopped downloading.");
         }
         finally
         {
@@ -349,7 +449,10 @@ public sealed class TranscodeService : IDisposable
 
     private async Task<bool> RunCacheJobAsync(BaseItem item, TranscodeProfile profile, string target, string requestedBy, CancellationToken cancellationToken)
     {
-        var job = _jobs.Add(NewJob(item, profile, requestedBy, live: false));
+        var job = NewJob(item, profile, requestedBy, live: false);
+        job.Cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cancellationToken = job.Cancellation.Token;
+        _jobs.Add(job);
         try
         {
             await _slots.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -417,7 +520,7 @@ public sealed class TranscodeService : IDisposable
         }
         catch (OperationCanceledException)
         {
-            _jobs.Finish(job, JobState.Cancelled, "Cancelled.");
+            _jobs.Finish(job, JobState.Cancelled, job.CancelRequested ? "Cancelled from the activity page." : "Cancelled.");
             return false;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)

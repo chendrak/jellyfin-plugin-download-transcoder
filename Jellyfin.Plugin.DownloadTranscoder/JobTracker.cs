@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.DownloadTranscoder;
@@ -87,6 +88,13 @@ public class TranscodeJob
     /// <summary>Gets or sets the GPU error, when the GPU failed and the CPU took over.</summary>
     public string? GpuError { get; set; }
 
+    /// <summary>Gets or sets a value indicating whether someone pressed Cancel on the activity page.</summary>
+    public bool CancelRequested { get; set; }
+
+    /// <summary>Gets or sets the cancellation source for a running job.</summary>
+    [JsonIgnore]
+    public CancellationTokenSource? Cancellation { get; set; }
+
     /// <summary>Gets or sets the error, for failed jobs.</summary>
     public string? Error { get; set; }
 
@@ -148,6 +156,8 @@ public sealed class JobTracker
         job.State = state;
         job.Error = error;
         job.EndedUtc = DateTime.UtcNow;
+        job.Cancellation?.Dispose();
+        job.Cancellation = null;
         _active.TryRemove(job.Id, out _);
         lock (_lock)
         {
@@ -167,6 +177,37 @@ public sealed class JobTracker
             {
                 _logger.LogWarning(ex, "Could not save transcode history");
             }
+        }
+    }
+
+    /// <summary>
+    /// Stops a running or queued job.
+    /// </summary>
+    /// <param name="id">The job id.</param>
+    /// <returns>False when no such job is running.</returns>
+    public bool Cancel(Guid id)
+    {
+        if (!_active.TryGetValue(id, out var job) || job.Cancellation is null)
+        {
+            return false;
+        }
+
+        job.CancelRequested = true;
+        job.Cancellation.Cancel();
+        return true;
+    }
+
+    /// <summary>
+    /// Finds a finished job.
+    /// </summary>
+    /// <param name="id">The job id.</param>
+    /// <returns>The job or null.</returns>
+    public TranscodeJob? FindInHistory(Guid id)
+    {
+        lock (_lock)
+        {
+            EnsureLoaded();
+            return _history.FirstOrDefault(j => j.Id == id);
         }
     }
 
@@ -209,4 +250,34 @@ public sealed class JobTracker
             _logger.LogWarning(ex, "Could not read transcode history");
         }
     }
+}
+
+/// <summary>
+/// The outcome of one GPU test run.
+/// </summary>
+public class GpuTestResult
+{
+    /// <summary>Gets or sets the test clip, e.g. "4K HEVC 10-bit".</summary>
+    public string Sample { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the encoder description.</summary>
+    public string Encoder { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets a value indicating whether this used the GPU.</summary>
+    public bool IsHardware { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether decode and scaling also ran on the GPU.</summary>
+    public bool FullPipeline { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether it worked.</summary>
+    public bool Ok { get; set; }
+
+    /// <summary>Gets or sets how long it took.</summary>
+    public double Seconds { get; set; }
+
+    /// <summary>Gets or sets the speed relative to real time.</summary>
+    public double Speed { get; set; }
+
+    /// <summary>Gets or sets the ffmpeg error.</summary>
+    public string? Error { get; set; }
 }

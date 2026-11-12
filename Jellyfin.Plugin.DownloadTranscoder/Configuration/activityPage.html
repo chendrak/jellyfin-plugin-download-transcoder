@@ -29,6 +29,9 @@
             #DownloadTranscoderActivityPage .dtChip { display: inline-block; font-size: 0.8em; padding: 0.1em 0.55em; border-radius: 1em; background: rgba(128,128,128,0.2); white-space: nowrap; }
             #DownloadTranscoderActivityPage .dtChip.gpu { background: rgba(0,164,220,0.25); }
             #DownloadTranscoderActivityPage h3 { margin-top: 1.5em; }
+            #DownloadTranscoderActivityPage .dtJobHead { display: flex; align-items: center; gap: 1em; justify-content: space-between; }
+            #DownloadTranscoderActivityPage .dtJobHead button, #DownloadTranscoderActivityPage .dtRetry { margin: 0; padding: 0.3em 0.9em; font-size: 0.85em; }
+            #DownloadTranscoderActivityPage .dtNote { font-size: 0.85em; opacity: 0.75; margin: 0.4em 0 0; }
         </style>
         <div data-role="content">
             <div class="content-primary">
@@ -117,7 +120,8 @@
                         if (j.EtaSeconds != null) { parts.push(dur(j.EtaSeconds) + ' left'); }
                         if (j.OutputBytes) { parts.push(size(j.OutputBytes) + ' written'); }
                         if (j.State === 'Running') { parts.push('running ' + dur(elapsed(j))); }
-                        return '<div class="dtJob"><div><b>' + esc(j.ItemName) + '</b></div>' +
+                        return '<div class="dtJob"><div class="dtJobHead"><b>' + esc(j.ItemName) + '</b>' +
+                            '<button is="emby-button" type="button" class="raised emby-button dtCancel" data-id="' + esc(j.Id) + '"><span>Cancel</span></button></div>' +
                             '<div class="dtBar' + (known ? '' : ' indeterminate') + '"><div style="width:' + (pct || 0) + '%"></div></div>' +
                             '<div>' + esc(status) + (parts.length ? ' · ' + esc(parts.join(' · ')) : '') + '</div>' +
                             '<div class="dtMeta">' + encoderChip(j) + ' · ' + esc(j.Profile) + ' profile · for ' + esc(j.RequestedBy || 'unknown') + ' · source ' + size(j.SourceBytes) + '</div></div>';
@@ -131,7 +135,7 @@
                     lastHistoryKey = key;
                     if (!jobs.length) { el('dtHistory').innerHTML = 'No transcodes yet.'; el('dtHistory').className = 'dtScroll dtMuted'; return; }
                     el('dtHistory').className = 'dtScroll';
-                    el('dtHistory').innerHTML = '<table><thead><tr><th>Finished</th><th>Item</th><th>Result</th><th>Size</th><th>Took</th><th>Encoder</th><th>For</th></tr></thead><tbody>' +
+                    el('dtHistory').innerHTML = '<table><thead><tr><th>Finished</th><th>Item</th><th>Result</th><th>Size</th><th>Took</th><th>Encoder</th><th>For</th><th></th></tr></thead><tbody>' +
                         jobs.map(function (j) {
                             var ok = j.State === 'Completed';
                             var result = '<span class="' + (ok ? 'dtOk' : j.State === 'Failed' ? 'dtBad' : 'dtMuted') + '">' + esc(j.State) + (j.Live ? ' (live)' : '') + '</span>';
@@ -139,7 +143,8 @@
                             var enc = encoderChip(j) + (j.GpuError ? '<details><summary>Earlier attempt failed</summary><pre>' + esc(j.GpuError) + '</pre></details>' : '');
                             var sizeText = ok && j.OutputBytes ? size(j.SourceBytes) + ' → ' + size(j.OutputBytes) +
                                 (j.SourceBytes ? ' (' + Math.round(100 - 100 * j.OutputBytes / j.SourceBytes) + '% smaller)' : '') : '';
-                            return '<tr><td>' + when(j.EndedUtc) + '</td><td>' + esc(j.ItemName) + '<div class="dtMeta">' + esc(j.Profile) + ' profile</div></td><td>' + result + '</td><td>' + sizeText + '</td><td>' + dur(elapsed(j)) + '</td><td>' + enc + '</td><td class="dtMeta">' + esc(j.RequestedBy) + '</td></tr>';
+                            return '<tr><td>' + when(j.EndedUtc) + '</td><td>' + esc(j.ItemName) + '<div class="dtMeta">' + esc(j.Profile) + ' profile</div></td><td>' + result + '</td><td>' + sizeText + '</td><td>' + dur(elapsed(j)) + '</td><td>' + enc + '</td><td class="dtMeta">' + esc(j.RequestedBy) + '</td><td>' +
+                                (j.Live ? '' : '<button is="emby-button" type="button" class="raised emby-button dtRetry" data-id="' + esc(j.Id) + '" title="' + (ok ? 'Transcode again with the current settings' : 'Try again') + '"><span>' + (ok ? 'Redo' : 'Retry') + '</span></button>') + '</td></tr>';
                         }).join('') + '</tbody></table>';
                 }
 
@@ -166,6 +171,28 @@
                         renderStats(r.Active || [], r.History || [], lastCacheData);
                     });
                 }
+
+                function post(path) {
+                    return ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl(path) });
+                }
+
+                page.addEventListener('click', function (e) {
+                    var cancel = e.target.closest('.dtCancel');
+                    if (cancel) {
+                        cancel.disabled = true;
+                        post('DownloadTranscoder/Jobs/' + cancel.getAttribute('data-id') + '/Cancel').then(loadJobs, loadJobs);
+                        if (window.Dashboard && Dashboard.alert) { Dashboard.alert({ message: 'Cancelled. If the app is still waiting for this download, it will start it again on its next retry. Cancel it in the app too.' }); }
+                        return;
+                    }
+                    var retry = e.target.closest('.dtRetry');
+                    if (retry) {
+                        retry.disabled = true;
+                        post('DownloadTranscoder/Jobs/' + retry.getAttribute('data-id') + '/Retry').then(function () { lastHistoryKey = ''; loadJobs(); loadCache(); }, function () {
+                            retry.disabled = false;
+                            if (window.Dashboard && Dashboard.alert) { Dashboard.alert({ message: 'That item or profile no longer exists.' }); }
+                        });
+                    }
+                });
 
                 function loadCache() {
                     return ApiClient.getJSON(ApiClient.getUrl('DownloadTranscoder/Cache')).then(function (c) {

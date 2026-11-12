@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Jellyfin.Data.Queries;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Common.Api;
@@ -25,6 +27,7 @@ public class DownloadTranscoderController : ControllerBase
     private readonly JobTracker _jobs;
     private readonly ILibraryManager _libraryManager;
     private readonly IServerConfigurationManager _serverConfig;
+    private readonly TranscodeService _transcodeService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DownloadTranscoderController"/> class.
@@ -33,8 +36,10 @@ public class DownloadTranscoderController : ControllerBase
     /// <param name="jobs">Job tracker.</param>
     /// <param name="libraryManager">Library manager.</param>
     /// <param name="serverConfig">Server configuration.</param>
-    public DownloadTranscoderController(IDeviceManager deviceManager, JobTracker jobs, ILibraryManager libraryManager, IServerConfigurationManager serverConfig)
+    /// <param name="transcodeService">Transcode service.</param>
+    public DownloadTranscoderController(IDeviceManager deviceManager, JobTracker jobs, ILibraryManager libraryManager, IServerConfigurationManager serverConfig, TranscodeService transcodeService)
     {
+        _transcodeService = transcodeService;
         _serverConfig = serverConfig;
         _deviceManager = deviceManager;
         _jobs = jobs;
@@ -63,6 +68,43 @@ public class DownloadTranscoderController : ControllerBase
     [HttpGet("Jobs")]
     public ActionResult<JobsResponse> GetJobs()
         => Ok(new JobsResponse { Active = _jobs.Active(), History = _jobs.History() });
+
+    /// <summary>
+    /// Cancels a running or queued transcode.
+    /// </summary>
+    /// <param name="id">Job id.</param>
+    /// <returns>No content, or 404 when it isn't running.</returns>
+    [HttpPost("Jobs/{id}/Cancel")]
+    public ActionResult CancelJob([FromRoute] Guid id) => _jobs.Cancel(id) ? NoContent() : NotFound();
+
+    /// <summary>
+    /// Transcodes a finished, failed or cancelled job's item again with the same profile.
+    /// </summary>
+    /// <param name="id">Job id from the history.</param>
+    /// <returns>No content, or 404 when the job, item or profile is gone.</returns>
+    [HttpPost("Jobs/{id}/Retry")]
+    public ActionResult RetryJob([FromRoute] Guid id)
+    {
+        var job = _jobs.FindInHistory(id);
+        var item = job is null ? null : _libraryManager.GetItemById(job.ItemId);
+        var profile = job is null ? null : DeviceDetector.FindByName(Plugin.Instance!.Configuration, job.Profile);
+        if (item is null || profile is null)
+        {
+            return NotFound();
+        }
+
+        _transcodeService.Retry(item, profile);
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Runs a short test transcode through each encoder (full GPU, GPU encode only, CPU).
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The results.</returns>
+    [HttpPost("TestGpu")]
+    public async Task<ActionResult<IReadOnlyList<GpuTestResult>>> TestGpu(CancellationToken cancellationToken)
+        => Ok(await _transcodeService.TestGpuAsync(cancellationToken).ConfigureAwait(false));
 
     /// <summary>
     /// Lists the cached smaller copies.

@@ -101,6 +101,11 @@
                                 </label>
                                 <div class="fieldDescription checkboxFieldDescription">Intel or AMD with Quick Sync or VAAPI on Linux. Falls back automatically if a file can't be handled this way.</div>
                             </div>
+                            <div class="dt-actions" style="margin-bottom:1em">
+                                <button is="emby-button" type="button" id="TestGpu" class="raised emby-button"><span>Test GPU</span></button>
+                                <span id="TestGpuStatus" class="dt-muted" style="align-self:center"></span>
+                            </div>
+                            <div id="TestGpuResults" class="dt-scroll" style="margin-bottom:1.5em"></div>
                             <div class="inputContainer">
                                 <label class="inputLabel inputLabelUnfocused" for="MaxConcurrentTranscodes">Transcodes at the same time</label>
                                 <input id="MaxConcurrentTranscodes" type="number" is="emby-input" min="1" max="8" />
@@ -360,6 +365,35 @@
                     renderDevices();
                     renderPreProfile();
                 }
+
+                // GPU test
+                el('TestGpu').addEventListener('click', function () {
+                    var btn = el('TestGpu');
+                    btn.disabled = true;
+                    el('TestGpuStatus').textContent = 'Running a few short test transcodes… (up to a minute)';
+                    el('TestGpuResults').innerHTML = '';
+                    ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('DownloadTranscoder/TestGpu'), dataType: 'json' }).then(function (results) {
+                        btn.disabled = false;
+                        var gpuOk = results.some(function (r) { return r.IsHardware && r.Ok; });
+                        var fullOk = results.filter(function (r) { return r.FullPipeline; });
+                        var verdict = !results.some(function (r) { return r.IsHardware; })
+                            ? 'No GPU is set up in Jellyfin, so everything runs on the CPU.'
+                            : fullOk.length && fullOk.every(function (r) { return r.Ok; }) ? 'The GPU handles everything, including 4K HEVC.'
+                            : gpuOk ? 'The GPU works, but not for every step. Failed steps fall back automatically.'
+                            : 'The GPU did not work. Transcodes will use the CPU. See the errors below.';
+                        el('TestGpuStatus').textContent = verdict;
+                        el('TestGpuResults').innerHTML = '<table class="dt-table"><thead><tr><th>Test clip</th><th>Path</th><th>Result</th><th>Speed</th></tr></thead><tbody>' +
+                            results.map(function (r) {
+                                var path = !r.IsHardware ? 'CPU' : r.FullPipeline ? 'GPU, everything' : 'GPU, encode only';
+                                var res = r.Ok ? '<span class="dt-chip on">Works</span>' : '<span class="dt-chip warn">Failed</span>' +
+                                    (r.Error ? '<details><summary class="dt-muted" style="cursor:pointer;font-size:0.85em">Error</summary><pre style="white-space:pre-wrap;font-size:0.8em;max-height:10em;overflow:auto">' + esc(r.Error) + '</pre></details>' : '');
+                                return '<tr><td>' + esc(r.Sample) + '</td><td title="' + esc(r.Encoder) + '">' + esc(path) + '</td><td>' + res + '</td><td>' + (r.Ok ? r.Speed.toFixed(1) + '× real time' : '') + '</td></tr>';
+                            }).join('') + '</tbody></table>';
+                    }, function () {
+                        btn.disabled = false;
+                        el('TestGpuStatus').textContent = 'The test could not run. Check the server log.';
+                    });
+                });
 
                 // Tabs
                 page.querySelectorAll('.dt-tab').forEach(function (tab) {
