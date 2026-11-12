@@ -19,7 +19,7 @@ Requires **Jellyfin 12.x**.
   - **Live**: transcodes while the file downloads. The size isn't known up front, so this is only used for apps that don't resume downloads; apps that send a `Range` header (such as the official Android app) still get Queue behaviour.
   - **Original**: sends the original file, so only pre-transcoded copies are ever used.
 - Adding `?original=true` to a download URL always returns the original. `?profile=Tablet` forces a specific profile.
-- Shows a **Download Transcodes** page in the dashboard menu, with live progress (percent, speed, time left) for running transcodes, a history of past ones with their size savings and any errors, and the cached copies, each with a delete button. Running transcodes can be cancelled, and finished or failed ones retried.
+- Shows a **Download Activity** page in the dashboard sidebar (next to the **Download Transcoder** settings entry), with live progress (percent, speed, time left) for running transcodes, a history of past ones with their size savings and any errors, and the cached copies, each with a delete button. Running transcodes can be cancelled, and finished or failed ones retried.
 - Has a **Test GPU** button that runs short 1080p H.264 and 4K 10-bit HEVC test transcodes through each path and reports what works and how fast.
 - Encodes on the GPU set under Dashboard → Playback → Transcoding (NVENC, Quick Sync, VAAPI, VideoToolbox, AMF, RKMPP) when "Enable hardware encoding" is on there. If the GPU encode fails, it retries on the CPU. With Intel or AMD graphics using QSV or VAAPI on Linux, decoding, scaling and HDR tone mapping also run on the GPU (full pipeline). If that fails for a file, it falls back to GPU encode only, then to the CPU. You can also enter a specific encoder in a profile (for example `h264_nvenc`), and add extra input arguments or a custom filter.
 
@@ -48,7 +48,7 @@ The server picks the profile in this order:
    - Name: `Download Transcoder`
    - URL: `https://raw.githubusercontent.com/chendrak/jellyfin-plugin-download-transcoder/main/manifest.json`
 2. Open the Catalog, install **Download Transcoder**, and restart Jellyfin.
-3. Open Dashboard → Plugins → Download Transcoder to review the profiles and devices.
+3. Open **Download Transcoder** in the dashboard sidebar to review the profiles and devices.
 
 New versions show up as updates in the plugin list.
 
