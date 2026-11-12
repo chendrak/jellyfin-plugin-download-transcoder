@@ -26,7 +26,8 @@ jobs:
       - run: dotnet test Jellyfin.Plugin.DownloadTranscoder.slnx
       - name: Read version
         id: v
-        run: echo "version=$(grep '^version:' build.yaml | sed 's/version: *"\{0,1\}\([^"]*\)"\{0,1\}/\1/')" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "version=$(grep '^version:' build.yaml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
       - name: Build zip
         run: |
           V=${{ steps.v.outputs.version }}
