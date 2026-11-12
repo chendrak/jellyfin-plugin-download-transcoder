@@ -19,6 +19,7 @@ Requires **Jellyfin 12.x**.
   - **Live**: transcodes while the file downloads. The size isn't known up front, so this is only used for apps that don't resume downloads; apps that send a `Range` header (such as the official Android app) still get Queue behaviour.
   - **Original**: sends the original file, so only pre-transcoded copies are ever used.
 - Adding `?original=true` to a download URL always returns the original. `?profile=Tablet` forces a specific profile.
+- Shows a **Download Transcodes** page in the dashboard menu, with live progress (percent, speed, time left) for running transcodes, a history of past ones with their size savings and any errors, and the cached copies, each with a delete button.
 - Supports hardware encoding through the encoder name (`h264_nvenc`, `h264_qsv`, `h264_vaapi`, …), extra input arguments and a custom filter, all set on the settings page.
 
 ## Device profiles

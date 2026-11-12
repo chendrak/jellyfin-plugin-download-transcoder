@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.DownloadTranscoder.Configuration;
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.Model.Entities;
@@ -30,6 +31,7 @@ public sealed class TranscodeService : IDisposable
     private readonly IMediaEncoder _mediaEncoder;
     private readonly IMediaSourceManager _mediaSourceManager;
     private readonly ILogger<TranscodeService> _logger;
+    private readonly JobTracker _jobs;
     private readonly ConcurrentDictionary<string, Task<bool>> _inFlight = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, DateTime> _failed = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _slots;
@@ -41,8 +43,10 @@ public sealed class TranscodeService : IDisposable
     /// <param name="mediaEncoder">Media encoder, used for the ffmpeg path.</param>
     /// <param name="mediaSourceManager">Media source manager, used for stream info.</param>
     /// <param name="logger">Logger.</param>
-    public TranscodeService(IMediaEncoder mediaEncoder, IMediaSourceManager mediaSourceManager, ILogger<TranscodeService> logger)
+    /// <param name="jobs">Job tracker.</param>
+    public TranscodeService(IMediaEncoder mediaEncoder, IMediaSourceManager mediaSourceManager, ILogger<TranscodeService> logger, JobTracker jobs)
     {
+        _jobs = jobs;
         _mediaEncoder = mediaEncoder;
         _mediaSourceManager = mediaSourceManager;
         _logger = logger;
@@ -131,8 +135,9 @@ public sealed class TranscodeService : IDisposable
     /// <param name="item">The item.</param>
     /// <param name="profile">The quality profile.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
+    /// <param name="requestedBy">Who asked, for the activity page.</param>
     /// <returns>True when a cached copy exists afterwards.</returns>
-    public Task<bool> TranscodeToCacheAsync(BaseItem item, TranscodeProfile profile, CancellationToken cancellationToken)
+    public Task<bool> TranscodeToCacheAsync(BaseItem item, TranscodeProfile profile, CancellationToken cancellationToken, string requestedBy = "")
     {
         if (!CacheEnabled)
         {
@@ -145,7 +150,7 @@ public sealed class TranscodeService : IDisposable
             return Task.FromResult(true);
         }
 
-        return _inFlight.GetOrAdd(target, _ => RunCacheJobAsync(item, profile, target, cancellationToken));
+        return _inFlight.GetOrAdd(target, _ => RunCacheJobAsync(item, profile, target, requestedBy, cancellationToken));
     }
 
     /// <summary>
@@ -170,9 +175,10 @@ public sealed class TranscodeService : IDisposable
     /// </summary>
     /// <param name="item">The item.</param>
     /// <param name="profile">The quality profile.</param>
-    public void Queue(BaseItem item, TranscodeProfile profile)
+    /// <param name="requestedBy">Who asked, for the activity page.</param>
+    public void Queue(BaseItem item, TranscodeProfile profile, string requestedBy = "")
     {
-        _ = TranscodeToCacheAsync(item, profile, CancellationToken.None);
+        _ = TranscodeToCacheAsync(item, profile, CancellationToken.None, requestedBy);
     }
 
     /// <summary>
@@ -182,8 +188,12 @@ public sealed class TranscodeService : IDisposable
     /// <param name="profile">The quality profile.</param>
     /// <param name="context">The HTTP context.</param>
     /// <returns>A task.</returns>
-    public async Task StreamLiveAsync(BaseItem item, TranscodeProfile profile, HttpContext context)
+    /// <param name="requestedBy">Who asked, for the activity page.</param>
+    public async Task StreamLiveAsync(BaseItem item, TranscodeProfile profile, HttpContext context, string requestedBy = "")
     {
+        var job = _jobs.Add(NewJob(item, profile, requestedBy, live: true));
+        job.State = JobState.Running;
+        job.StartedUtc = DateTime.UtcNow;
         var cfg = Config;
         var ts = string.Equals(cfg.LiveContainer, "mpegts", StringComparison.OrdinalIgnoreCase);
         var streams = GetStreams(item);
@@ -217,6 +227,7 @@ public sealed class TranscodeService : IDisposable
             while ((read = await stdout.ReadAsync(buffer, aborted).ConfigureAwait(false)) > 0)
             {
                 await response.Body.WriteAsync(buffer.AsMemory(0, read), aborted).ConfigureAwait(false);
+                job.OutputBytes += read;
                 if (tee is not null)
                 {
                     await tee.WriteAsync(buffer.AsMemory(0, read), CancellationToken.None).ConfigureAwait(false);
@@ -227,12 +238,19 @@ public sealed class TranscodeService : IDisposable
             ok = process.ExitCode == 0;
             if (!ok)
             {
-                _logger.LogError("Live transcode of {Name} failed (exit {Code}): {Log}", item.Name, process.ExitCode, await stderr.ConfigureAwait(false));
+                var log = await stderr.ConfigureAwait(false);
+                _logger.LogError("Live transcode of {Name} failed (exit {Code}): {Log}", item.Name, process.ExitCode, log);
+                _jobs.Finish(job, JobState.Failed, log);
+            }
+            else
+            {
+                _jobs.Finish(job, JobState.Completed);
             }
         }
         catch (OperationCanceledException)
         {
             _logger.LogInformation("Client stopped downloading {Name}; stopping ffmpeg", item.Name);
+            _jobs.Finish(job, JobState.Cancelled, "The app stopped downloading.");
         }
         finally
         {
@@ -322,8 +340,9 @@ public sealed class TranscodeService : IDisposable
         MpegTs
     }
 
-    private async Task<bool> RunCacheJobAsync(BaseItem item, TranscodeProfile profile, string target, CancellationToken cancellationToken)
+    private async Task<bool> RunCacheJobAsync(BaseItem item, TranscodeProfile profile, string target, string requestedBy, CancellationToken cancellationToken)
     {
+        var job = _jobs.Add(NewJob(item, profile, requestedBy, live: false));
         try
         {
             await _slots.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -331,22 +350,30 @@ public sealed class TranscodeService : IDisposable
             {
                 if (File.Exists(target))
                 {
+                    _jobs.Finish(job, JobState.Completed);
                     return true;
                 }
+
+                job.State = JobState.Running;
+                job.StartedUtc = DateTime.UtcNow;
 
                 Directory.CreateDirectory(CacheDir);
                 var partial = Path.Combine(CacheDir, Guid.NewGuid().ToString("N") + PartialExtension);
                 var args = BuildArguments(item, GetStreams(item), partial, LiveFormat.File, profile);
                 _logger.LogInformation("Transcoding {Name} for download with profile {Profile}", item.Name, profile.Name);
-                var ok = await RunToCompletionAsync(args, cancellationToken).ConfigureAwait(false);
+                args.InsertRange(0, ["-progress", "pipe:1", "-nostats"]);
+                var (ok, log) = await RunToCompletionAsync(args, cancellationToken, line => ParseProgress(job, line)).ConfigureAwait(false);
                 if (!ok)
                 {
                     TryDelete(partial);
                     _failed[target] = DateTime.UtcNow;
+                    _jobs.Finish(job, JobState.Failed, log);
                     return false;
                 }
 
+                job.OutputBytes = new FileInfo(partial).Length;
                 File.Move(partial, target, true);
+                _jobs.Finish(job, JobState.Completed);
                 _failed.TryRemove(target, out _);
                 _logger.LogInformation("Cached download transcode of {Name}", item.Name);
                 EnforceCacheLimit();
@@ -359,12 +386,14 @@ public sealed class TranscodeService : IDisposable
         }
         catch (OperationCanceledException)
         {
+            _jobs.Finish(job, JobState.Cancelled, "Cancelled.");
             return false;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             _logger.LogError(ex, "Transcoding {Name} failed", item.Name);
             _failed[target] = DateTime.UtcNow;
+            _jobs.Finish(job, JobState.Failed, ex.Message);
             return false;
         }
         finally
@@ -383,7 +412,7 @@ public sealed class TranscodeService : IDisposable
                 "-hide_banner", "-nostdin", "-y", "-i", source,
                 "-map", "0", "-c", "copy", "-movflags", "+faststart", "-f", "mp4", temp
             };
-            if (await RunToCompletionAsync(args, CancellationToken.None).ConfigureAwait(false))
+            if ((await RunToCompletionAsync(args, CancellationToken.None).ConfigureAwait(false)).Ok)
             {
                 File.Move(temp, target, true);
                 EnforceCacheLimit();
@@ -400,13 +429,24 @@ public sealed class TranscodeService : IDisposable
         }
     }
 
-    private async Task<bool> RunToCompletionAsync(List<string> args, CancellationToken cancellationToken)
+    private async Task<(bool Ok, string Log)> RunToCompletionAsync(List<string> args, CancellationToken cancellationToken, Action<string>? onStdoutLine = null)
     {
-        using var process = StartFfmpeg(args, redirectStdout: false);
+        using var process = StartFfmpeg(args, redirectStdout: onStdoutLine is not null);
         var stderr = CollectStderrAsync(process);
+        var stdout = onStdoutLine is null ? Task.CompletedTask : Task.Run(
+            async () =>
+            {
+                string? line;
+                while ((line = await process.StandardOutput.ReadLineAsync(CancellationToken.None).ConfigureAwait(false)) is not null)
+                {
+                    onStdoutLine(line);
+                }
+            },
+            CancellationToken.None);
         try
         {
             await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            await stdout.ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -414,13 +454,93 @@ public sealed class TranscodeService : IDisposable
             throw;
         }
 
+        var log = await stderr.ConfigureAwait(false);
         if (process.ExitCode != 0)
         {
-            _logger.LogError("ffmpeg exited with {Code}: {Log}", process.ExitCode, await stderr.ConfigureAwait(false));
-            return false;
+            _logger.LogError("ffmpeg exited with {Code}: {Log}", process.ExitCode, log);
+            return (false, string.IsNullOrWhiteSpace(log) ? "ffmpeg exited with code " + process.ExitCode : log);
         }
 
-        return true;
+        return (true, log);
+    }
+
+    private static TranscodeJob NewJob(BaseItem item, TranscodeProfile profile, string requestedBy, bool live)
+    {
+        long size = 0;
+        try
+        {
+            size = new FileInfo(item.Path).Length;
+        }
+        catch (IOException)
+        {
+            // Unknown size.
+        }
+
+        return new TranscodeJob
+        {
+            ItemId = item.Id,
+            ItemName = DisplayName(item),
+            Profile = profile.Name,
+            RequestedBy = requestedBy,
+            Live = live,
+            DurationSeconds = item.RunTimeTicks is > 0 ? TimeSpan.FromTicks(item.RunTimeTicks.Value).TotalSeconds : 0,
+            SourceBytes = size
+        };
+    }
+
+    internal static string DisplayName(BaseItem item)
+    {
+        if (item is Episode episode)
+        {
+            var code = episode.ParentIndexNumber is not null && episode.IndexNumber is not null
+                ? string.Format(CultureInfo.InvariantCulture, " S{0:00}E{1:00}", episode.ParentIndexNumber, episode.IndexNumber)
+                : string.Empty;
+            return episode.SeriesName + code + " - " + episode.Name;
+        }
+
+        return item.ProductionYear is not null ? item.Name + " (" + item.ProductionYear.Value.ToString(CultureInfo.InvariantCulture) + ")" : item.Name;
+    }
+
+    /// <summary>
+    /// Applies one line of ffmpeg "-progress" output to a job.
+    /// </summary>
+    /// <param name="job">The job.</param>
+    /// <param name="line">A "key=value" line.</param>
+    internal static void ParseProgress(TranscodeJob job, string line)
+    {
+        var eq = line.IndexOf('=', StringComparison.Ordinal);
+        if (eq <= 0)
+        {
+            return;
+        }
+
+        var key = line[..eq];
+        var value = line[(eq + 1)..].Trim();
+        switch (key)
+        {
+            case "out_time_us":
+            case "out_time_ms": // Despite its name, ffmpeg reports microseconds here too.
+                if (long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var us) && us >= 0)
+                {
+                    job.ProcessedSeconds = us / 1_000_000.0;
+                }
+
+                break;
+            case "total_size":
+                if (long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var bytes))
+                {
+                    job.OutputBytes = bytes;
+                }
+
+                break;
+            case "speed":
+                if (double.TryParse(value.TrimEnd('x'), NumberStyles.Float, CultureInfo.InvariantCulture, out var speed))
+                {
+                    job.Speed = speed;
+                }
+
+                break;
+        }
     }
 
     private Process StartFfmpeg(List<string> args, bool redirectStdout)

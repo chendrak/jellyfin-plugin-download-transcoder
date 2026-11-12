@@ -1,6 +1,6 @@
 name: "Download Transcoder"
 guid: "f008c7ae-97d2-4148-8d02-e281034b764d"
-version: "1.0.1.0"
+version: "1.0.2.0"
 targetAbi: "12.0.0.0"
 framework: "net10.0"
 overview: "Serve smaller, transcoded files when clients download media"
@@ -15,7 +15,6 @@ owner: "chendrak"
 artifacts:
 - "Jellyfin.Plugin.DownloadTranscoder.dll"
 changelog: >
-  Fix "Download incomplete" in the Jellyfin Android app: apps that resume
-  downloads now get "retry later" while the smaller copy is prepared instead
-  of a live stream without a size. Default for items not yet transcoded is
-  now "prepare in background". Falls back to the original if transcoding fails.
+  New "Download Transcodes" dashboard page: live progress (percent, speed,
+  time left) for running transcodes, a history of past ones with size
+  savings and errors, and the cached copies with a delete button.

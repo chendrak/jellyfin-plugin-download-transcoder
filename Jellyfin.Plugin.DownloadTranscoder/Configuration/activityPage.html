@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Download Transcodes</title>
+</head>
+<body>
+    <div id="DownloadTranscoderActivityPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-button">
+        <style>
+            #DownloadTranscoderActivityPage .dtJob { padding: 1em; margin-bottom: 1em; border-radius: 0.3em; background: rgba(128,128,128,0.12); }
+            #DownloadTranscoderActivityPage .dtBar { height: 0.6em; border-radius: 0.3em; background: rgba(128,128,128,0.3); overflow: hidden; margin: 0.6em 0; }
+            #DownloadTranscoderActivityPage .dtBar > div { height: 100%; background: #00a4dc; transition: width 0.5s; }
+            #DownloadTranscoderActivityPage .dtBar.indeterminate > div { width: 30% !important; animation: dtSlide 1.5s infinite linear; }
+            @keyframes dtSlide { from { margin-left: -30%; } to { margin-left: 100%; } }
+            #DownloadTranscoderActivityPage .dtMeta { opacity: 0.75; font-size: 0.9em; }
+            #DownloadTranscoderActivityPage table { width: 100%; border-collapse: collapse; }
+            #DownloadTranscoderActivityPage th, #DownloadTranscoderActivityPage td { text-align: left; padding: 0.4em 0.6em 0.4em 0; vertical-align: top; }
+            #DownloadTranscoderActivityPage tbody tr { border-top: 1px solid rgba(128,128,128,0.25); }
+            #DownloadTranscoderActivityPage .dtOk { color: #4caf50; }
+            #DownloadTranscoderActivityPage .dtBad { color: #f44336; }
+            #DownloadTranscoderActivityPage .dtMuted { opacity: 0.7; }
+            #DownloadTranscoderActivityPage .dtScroll { overflow-x: auto; }
+            #DownloadTranscoderActivityPage pre { white-space: pre-wrap; font-size: 0.8em; margin: 0.3em 0 0; }
+        </style>
+        <div data-role="content">
+            <div class="content-primary">
+                <div class="sectionTitleContainer flex align-items-center">
+                    <h2 class="sectionTitle">Download Transcodes</h2>
+                    <a is="emby-linkbutton" class="raised button-alt headerHelpButton emby-button" href="#/configurationpage?name=Download%20Transcoder">Settings</a>
+                </div>
+
+                <h3>Running now</h3>
+                <div id="dtActive" class="dtMuted">Loading…</div>
+
+                <h3>Recent</h3>
+                <div id="dtHistory" class="dtScroll dtMuted">Loading…</div>
+
+                <h3>Cached copies</h3>
+                <div id="dtCacheSummary" class="dtMeta"></div>
+                <div id="dtCache" class="dtScroll"></div>
+            </div>
+        </div>
+        <script type="text/javascript">
+            (function () {
+                var page = document.querySelector('#DownloadTranscoderActivityPage');
+                var timer = null;
+
+                function el(id) { return page.querySelector('#' + id); }
+                function esc(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
+                function size(b) {
+                    if (!b) { return '0 MB'; }
+                    return b >= 1073741824 ? (b / 1073741824).toFixed(2) + ' GB' : (b / 1048576).toFixed(0) + ' MB';
+                }
+                function dur(s) {
+                    if (s == null) { return ''; }
+                    s = Math.round(s);
+                    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+                    return (h ? h + 'h ' : '') + (h || m ? m + 'm ' : '') + (h ? '' : sec + 's');
+                }
+                function when(iso) {
+                    if (!iso) { return ''; }
+                    var d = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
+                    return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                }
+                function elapsed(job) {
+                    if (!job.StartedUtc) { return null; }
+                    var end = job.EndedUtc ? new Date(job.EndedUtc.endsWith('Z') ? job.EndedUtc : job.EndedUtc + 'Z') : new Date();
+                    return (end - new Date(job.StartedUtc.endsWith('Z') ? job.StartedUtc : job.StartedUtc + 'Z')) / 1000;
+                }
+
+                function renderActive(jobs) {
+                    if (!jobs.length) { el('dtActive').innerHTML = 'Nothing is transcoding.'; el('dtActive').className = 'dtMuted'; return; }
+                    el('dtActive').className = '';
+                    el('dtActive').innerHTML = jobs.map(function (j) {
+                        var pct = j.Percent;
+                        var known = pct != null && !j.Live && j.State === 'Running';
+                        var status = j.State === 'Queued' ? 'Waiting for a free slot' :
+                            j.Live ? 'Streaming live to the app' :
+                            (pct != null ? pct.toFixed(1) + '%' : 'Starting');
+                        var parts = [];
+                        if (j.State === 'Running' && j.Speed) { parts.push(j.Speed.toFixed(1) + '× real time'); }
+                        if (j.EtaSeconds != null) { parts.push(dur(j.EtaSeconds) + ' left'); }
+                        if (j.OutputBytes) { parts.push(size(j.OutputBytes) + ' written'); }
+                        if (j.State === 'Running') { parts.push('running ' + dur(elapsed(j))); }
+                        return '<div class="dtJob"><div><b>' + esc(j.ItemName) + '</b></div>' +
+                            '<div class="dtBar' + (known ? '' : ' indeterminate') + '"><div style="width:' + (pct || 0) + '%"></div></div>' +
+                            '<div>' + esc(status) + (parts.length ? ' · ' + esc(parts.join(' · ')) : '') + '</div>' +
+                            '<div class="dtMeta">Profile ' + esc(j.Profile) + ' · for ' + esc(j.RequestedBy || 'unknown') + ' · source ' + size(j.SourceBytes) + '</div></div>';
+                    }).join('');
+                }
+
+                function renderHistory(jobs) {
+                    if (!jobs.length) { el('dtHistory').innerHTML = 'No transcodes yet.'; el('dtHistory').className = 'dtScroll dtMuted'; return; }
+                    el('dtHistory').className = 'dtScroll';
+                    el('dtHistory').innerHTML = '<table><thead><tr><th>Finished</th><th>Item</th><th>Profile</th><th>For</th><th>Result</th><th>Took</th><th>Size</th></tr></thead><tbody>' +
+                        jobs.map(function (j) {
+                            var ok = j.State === 'Completed';
+                            var result = '<span class="' + (ok ? 'dtOk' : j.State === 'Failed' ? 'dtBad' : 'dtMuted') + '">' + esc(j.State) + (j.Live ? ' (live)' : '') + '</span>';
+                            if (j.Error) { result += '<pre>' + esc(j.Error) + '</pre>'; }
+                            var sizeText = ok && j.OutputBytes ? size(j.SourceBytes) + ' → ' + size(j.OutputBytes) +
+                                (j.SourceBytes ? ' (' + Math.round(100 - 100 * j.OutputBytes / j.SourceBytes) + '% smaller)' : '') : '';
+                            return '<tr><td>' + when(j.EndedUtc) + '</td><td>' + esc(j.ItemName) + '</td><td>' + esc(j.Profile) + '</td><td>' + esc(j.RequestedBy) + '</td><td>' + result + '</td><td>' + dur(elapsed(j)) + '</td><td>' + sizeText + '</td></tr>';
+                        }).join('') + '</tbody></table>';
+                }
+
+                function renderCache(cache) {
+                    el('dtCacheSummary').innerHTML = size(cache.TotalBytes) + ' of ' + (cache.LimitBytes ? size(cache.LimitBytes) : 'unlimited') + ' used in ' + esc(cache.Path);
+                    if (!cache.Entries.length) { el('dtCache').innerHTML = '<p class="dtMuted">Empty.</p>'; return; }
+                    el('dtCache').innerHTML = '<table><thead><tr><th>Item</th><th>Size</th><th>Made</th><th>Last downloaded</th><th></th></tr></thead><tbody>' +
+                        cache.Entries.map(function (e) {
+                            return '<tr><td>' + esc(e.ItemName) + '</td><td>' + size(e.Bytes) + '</td><td>' + when(e.CreatedUtc) + '</td><td>' + when(e.LastUsedUtc) + '</td>' +
+                                '<td><button is="emby-button" type="button" class="raised emby-button dtDelete" data-file="' + esc(e.FileName) + '"><span>Delete</span></button></td></tr>';
+                        }).join('') + '</tbody></table>';
+                    page.querySelectorAll('.dtDelete').forEach(function (b) {
+                        b.addEventListener('click', function () {
+                            ApiClient.ajax({ type: 'DELETE', url: ApiClient.getUrl('DownloadTranscoder/Cache/' + encodeURIComponent(b.getAttribute('data-file'))) }).then(loadCache, loadCache);
+                        });
+                    });
+                }
+
+                function loadJobs() {
+                    return ApiClient.getJSON(ApiClient.getUrl('DownloadTranscoder/Jobs')).then(function (r) {
+                        renderActive(r.Active || []);
+                        renderHistory(r.History || []);
+                    });
+                }
+
+                function loadCache() {
+                    return ApiClient.getJSON(ApiClient.getUrl('DownloadTranscoder/Cache')).then(renderCache);
+                }
+
+                var lastCache = 0;
+                function tick() {
+                    loadJobs();
+                    if (Date.now() - lastCache > 15000) { lastCache = Date.now(); loadCache(); }
+                }
+
+                page.addEventListener('pageshow', function () {
+                    lastCache = 0;
+                    tick();
+                    clearInterval(timer);
+                    timer = setInterval(tick, 2000);
+                });
+                page.addEventListener('pagehide', function () { clearInterval(timer); timer = null; });
+            })();
+        </script>
+    </div>
+</body>
+</html>

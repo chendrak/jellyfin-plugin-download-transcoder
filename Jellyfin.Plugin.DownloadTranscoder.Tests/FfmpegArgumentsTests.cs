@@ -121,6 +121,26 @@ public sealed class FfmpegArgumentsTests : IDisposable
     }
 
     [Fact]
+    public void ProgressOutputIsParsed()
+    {
+        var output = Path.Combine(_dir, "progress.mp4");
+        var item = new Movie { Path = _source, Id = Guid.NewGuid() };
+        var args = TranscodeService.BuildArguments(item, Streams(), output, TranscodeService.LiveFormat.File, Phone(), new PluginConfiguration());
+        args.InsertRange(0, ["-progress", "pipe:1", "-nostats"]);
+        var job = new TranscodeJob { DurationSeconds = 8 };
+        foreach (var line in Run(Ffmpeg, args).Split('\n'))
+        {
+            TranscodeService.ParseProgress(job, line.Trim());
+        }
+
+        Assert.InRange(job.ProcessedSeconds, 7.5, 8.5);
+        Assert.True(job.Speed > 0);
+        Assert.True(job.OutputBytes > 0);
+        job.State = JobState.Running;
+        Assert.InRange(job.Percent!.Value, 90, 99.9);
+    }
+
+    [Fact]
     public void SplitArgumentsHonoursQuotes()
     {
         var parts = TranscodeService.SplitArguments("-hwaccel vaapi  -hwaccel_device \"/dev/dri/render D128\"");

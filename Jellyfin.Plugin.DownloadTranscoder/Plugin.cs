@@ -59,6 +59,14 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
             {
                 Name = Name,
                 EmbeddedResourcePath = string.Format(CultureInfo.InvariantCulture, "{0}.Configuration.configPage.html", GetType().Namespace)
+            },
+            new PluginPageInfo
+            {
+                Name = "DownloadTranscoderActivity",
+                DisplayName = "Download Transcodes",
+                EnableInMainMenu = true,
+                MenuIcon = "download",
+                EmbeddedResourcePath = string.Format(CultureInfo.InvariantCulture, "{0}.Configuration.activityPage.html", GetType().Namespace)
             }
         ];
     }

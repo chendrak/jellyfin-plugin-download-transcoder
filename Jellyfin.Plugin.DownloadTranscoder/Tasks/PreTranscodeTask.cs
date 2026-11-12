@@ -85,7 +85,7 @@ public class PreTranscodeTask : IScheduledTask
         for (var i = 0; i < todo.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await _transcodeService.TranscodeToCacheAsync(todo[i], profile, cancellationToken).ConfigureAwait(false);
+            await _transcodeService.TranscodeToCacheAsync(todo[i], profile, cancellationToken, "Scheduled pre-transcode").ConfigureAwait(false);
             progress.Report(100.0 * (i + 1) / todo.Count);
         }
     }

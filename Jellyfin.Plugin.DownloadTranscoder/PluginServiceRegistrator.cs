@@ -13,6 +13,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
     /// <inheritdoc />
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
     {
+        serviceCollection.AddSingleton<JobTracker>();
         serviceCollection.AddSingleton<TranscodeService>();
         serviceCollection.AddSingleton<DownloadResultFilter>();
         serviceCollection.Configure<MvcOptions>(options => options.Filters.AddService<DownloadResultFilter>());

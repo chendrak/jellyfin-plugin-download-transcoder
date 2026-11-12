@@ -90,7 +90,7 @@ public sealed class DownloadResultFilter : IAsyncResultFilter
             return;
         }
 
-        var who = client + " on " + device + " (profile " + profile.Name + ")";
+        var who = client + " on " + device;
 
         if (!Guid.TryParse(Convert.ToString(context.RouteData.Values["itemId"], CultureInfo.InvariantCulture), out var itemId))
         {
@@ -106,7 +106,7 @@ public sealed class DownloadResultFilter : IAsyncResultFilter
         var cached = _transcodeService.TryGetCached(item, profile);
         if (cached is not null)
         {
-            _logger.LogInformation("Serving cached transcode of {Name} to {Client}", item.Name, who);
+            _logger.LogInformation("Serving cached transcode of {Name} to {Client} (profile {Profile})", item.Name, who, profile.Name);
             context.Result = new PhysicalFileResult(cached, "video/mp4")
             {
                 FileDownloadName = TranscodeService.DownloadName(item, ".mp4"),
@@ -134,11 +134,11 @@ public sealed class DownloadResultFilter : IAsyncResultFilter
         {
             case OnDemandMode.Live:
                 _logger.LogInformation("Transcoding {Name} live for {Client}", item.Name, who);
-                context.Result = new LiveTranscodeResult(_transcodeService, item, profile);
+                context.Result = new LiveTranscodeResult(_transcodeService, item, profile, who);
                 break;
             case OnDemandMode.Queue:
                 _logger.LogInformation("Queued {Name} for transcoding; asked {Client} to retry later", item.Name, who);
-                _transcodeService.Queue(item, profile);
+                _transcodeService.Queue(item, profile, who);
                 context.HttpContext.Response.Headers.RetryAfter = "120";
                 context.Result = new ObjectResult("A smaller copy is being prepared. Try the download again in a few minutes.")
                 {
@@ -158,14 +158,16 @@ public sealed class DownloadResultFilter : IAsyncResultFilter
         private readonly TranscodeService _service;
         private readonly MediaBrowser.Controller.Entities.BaseItem _item;
         private readonly TranscodeProfile _profile;
+        private readonly string _who;
 
-        public LiveTranscodeResult(TranscodeService service, MediaBrowser.Controller.Entities.BaseItem item, TranscodeProfile profile)
+        public LiveTranscodeResult(TranscodeService service, MediaBrowser.Controller.Entities.BaseItem item, TranscodeProfile profile, string who)
         {
             _service = service;
             _item = item;
             _profile = profile;
+            _who = who;
         }
 
-        public Task ExecuteResultAsync(ActionContext context) => _service.StreamLiveAsync(_item, _profile, context.HttpContext);
+        public Task ExecuteResultAsync(ActionContext context) => _service.StreamLiveAsync(_item, _profile, context.HttpContext, _who);
     }
 }
