@@ -3,6 +3,14 @@
     "guid": "f008c7ae-97d2-4148-8d02-e281034b764d",
     "versions": [
       {
+        "version": "1.0.3.0",
+        "changelog": "Encode on the GPU using Jellyfin's own hardware acceleration settings (NVENC, Quick Sync, VAAPI, VideoToolbox, AMF, RKMPP), with automatic CPU fallback if the GPU encode fails. The activity page shows which encoder each transcode used.",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/chendrak/jellyfin-plugin-download-transcoder/releases/download/v1.0.3.0/download-transcoder_1.0.3.0.zip",
+        "checksum": "e69c363dfa5f36e98757d7a3b2769382",
+        "timestamp": "2026-11-12T16:43:03Z"
+      },
+      {
         "version": "1.0.2.0",
         "changelog": "New \"Download Transcodes\" dashboard page: live progress (percent, speed, time left) for running transcodes, a history of past ones with size savings and errors, and the cached copies with a delete button.",
         "targetAbi": "12.0.0.0",
