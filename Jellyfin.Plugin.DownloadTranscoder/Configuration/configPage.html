@@ -35,6 +35,13 @@
                         </label>
                         <div class="fieldDescription checkboxFieldDescription">Uses the type and device set under Dashboard, Playback, Transcoding (NVENC, Quick Sync, VAAPI, VideoToolbox, AMF…) with "Enable hardware encoding" turned on. A profile's libx264 becomes h264 on the GPU and libx265 becomes HEVC on the GPU. If the GPU fails, the CPU takes over. The activity page shows which one was used.</div>
                     </div>
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="FullGpuPipeline" type="checkbox" is="emby-checkbox" />
+                            <span>Also decode, scale and tone map on the GPU (Intel or AMD with QSV or VAAPI, Linux)</span>
+                        </label>
+                        <div class="fieldDescription checkboxFieldDescription">Much faster for 4K, HEVC and HDR sources. If a file fails this way, it is retried with GPU encoding only, then on the CPU.</div>
+                    </div>
                     <div class="checkboxContainer">
                         <label class="emby-checkbox-label">
                             <input id="KeepAllAudioTracks" type="checkbox" is="emby-checkbox" />
@@ -138,7 +145,7 @@
                 var page = document.querySelector('#DownloadTranscoderConfigPage');
                 var textFields = ['CachePath', 'ExtraInputArguments', 'CustomVideoFilter', 'OnDemand', 'LiveContainer'];
                 var numberFields = ['MaxCacheSizeGb', 'MaxConcurrentTranscodes', 'PreTranscodeNewestItems'];
-                var boolFields = ['Enabled', 'UseJellyfinHardwareAcceleration', 'KeepAllAudioTracks', 'KeepTextSubtitles', 'TonemapHdr', 'SkipIfAlreadySmall'];
+                var boolFields = ['Enabled', 'UseJellyfinHardwareAcceleration', 'FullGpuPipeline', 'KeepAllAudioTracks', 'KeepTextSubtitles', 'TonemapHdr', 'SkipIfAlreadySmall'];
                 var kinds = [['Phone', 'Phone'], ['Tablet', 'Tablet'], ['Tv', 'TV'], ['Desktop', 'Computer'], ['Other', 'Other / unknown']];
                 var profiles = [];
                 var assignments = {};

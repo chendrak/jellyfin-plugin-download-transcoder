@@ -197,13 +197,13 @@ public sealed class TranscodeService : IDisposable
     public async Task StreamLiveAsync(BaseItem item, TranscodeProfile profile, HttpContext context, string requestedBy = "")
     {
         var job = _jobs.Add(NewJob(item, profile, requestedBy, live: true));
-        job.Encoder = ResolveEncoder(profile, forceSoftware: false).Label;
+        job.Encoder = EncoderChain(profile)[0].Label;
         job.State = JobState.Running;
         job.StartedUtc = DateTime.UtcNow;
         var cfg = Config;
         var ts = string.Equals(cfg.LiveContainer, "mpegts", StringComparison.OrdinalIgnoreCase);
         var streams = GetStreams(item);
-        var encoder = ResolveEncoder(profile, forceSoftware: false);
+        var encoder = EncoderChain(profile)[0];
         var args = BuildArguments(item, streams, "pipe:1", ts ? LiveFormat.MpegTs : LiveFormat.FragmentedMp4, profile, null, encoder);
 
         var response = context.Response;
@@ -367,23 +367,31 @@ public sealed class TranscodeService : IDisposable
                 Directory.CreateDirectory(CacheDir);
                 var partial = Path.Combine(CacheDir, Guid.NewGuid().ToString("N") + PartialExtension);
                 var streams = GetStreams(item);
-                var encoder = ResolveEncoder(profile, forceSoftware: false);
-                job.Encoder = encoder.Label;
-                _logger.LogInformation("Transcoding {Name} for download with profile {Profile} on {Encoder}", item.Name, profile.Name, encoder.Label);
-                var args = BuildArguments(item, streams, partial, LiveFormat.File, profile, null, encoder);
-                args.InsertRange(0, ["-progress", "pipe:1", "-nostats"]);
-                var (ok, log) = await RunToCompletionAsync(args, cancellationToken, line => ParseProgress(job, line)).ConfigureAwait(false);
-                if (!ok && encoder.IsHardware)
+                // Try the best encoder first and fall back (full GPU, GPU encode only, CPU) if ffmpeg fails,
+                // e.g. because the GPU can't decode this codec or the device isn't accessible.
+                var ok = false;
+                var log = string.Empty;
+                var failures = new List<string>();
+                foreach (var encoder in EncoderChain(profile))
                 {
-                    // The GPU encode failed (driver, device permissions, unsupported codec…). Try the CPU.
-                    _logger.LogWarning("GPU transcode of {Name} with {Encoder} failed, retrying on the CPU: {Log}", item.Name, encoder.Encoder, log);
-                    var cpu = ResolveEncoder(profile, forceSoftware: true);
-                    job.Encoder = cpu.Label + ", after " + encoder.Encoder + " failed";
-                    job.GpuError = log;
+                    job.Encoder = failures.Count == 0 ? encoder.Label : encoder.Label + " (fallback)";
                     job.ProcessedSeconds = 0;
-                    args = BuildArguments(item, streams, partial, LiveFormat.File, profile, null, cpu);
+                    _logger.LogInformation("Transcoding {Name} for download with profile {Profile} on {Encoder}", item.Name, profile.Name, encoder.Label);
+                    var args = BuildArguments(item, streams, partial, LiveFormat.File, profile, null, encoder);
                     args.InsertRange(0, ["-progress", "pipe:1", "-nostats"]);
                     (ok, log) = await RunToCompletionAsync(args, cancellationToken, line => ParseProgress(job, line)).ConfigureAwait(false);
+                    if (ok)
+                    {
+                        break;
+                    }
+
+                    _logger.LogWarning("Transcoding {Name} with {Encoder} failed: {Log}", item.Name, encoder.Label, log);
+                    failures.Add(encoder.Label + ": " + log);
+                }
+
+                if (failures.Count > 0)
+                {
+                    job.GpuError = string.Join("\n\n", ok ? failures : failures.Take(failures.Count - 1));
                 }
 
                 if (!ok)
@@ -487,17 +495,16 @@ public sealed class TranscodeService : IDisposable
         return (true, log);
     }
 
-    private EncoderChoice ResolveEncoder(TranscodeProfile profile, bool forceSoftware)
+    private IReadOnlyList<EncoderChoice> EncoderChain(TranscodeProfile profile)
     {
         var options = _serverConfig.GetEncodingOptions();
-        return HardwareEncoder.Resolve(
+        return HardwareEncoder.Chain(
             profile,
             Config,
             options.HardwareAccelerationType.ToString(),
             options.EnableHardwareEncoding,
             options.VaapiDevice,
-            options.QsvDevice,
-            forceSoftware);
+            options.QsvDevice);
     }
 
     private static TranscodeJob NewJob(BaseItem item, TranscodeProfile profile, string requestedBy, bool live)
@@ -711,6 +718,10 @@ public sealed class TranscodeService : IDisposable
         if (!string.IsNullOrWhiteSpace(cfg.CustomVideoFilter))
         {
             filter = cfg.CustomVideoFilter.Replace("{height}", height, StringComparison.Ordinal);
+        }
+        else if (choice.FullPipeline)
+        {
+            filter = choice.FullPipelineFilter(profile.MaxHeight, cfg.TonemapHdr && video is not null && IsHdr(video));
         }
         else
         {

@@ -73,4 +73,48 @@ public class HardwareEncoderTests
         Assert.DoesNotContain("-preset", args);
         Assert.DoesNotContain("-pix_fmt", args);
     }
+
+    [Fact]
+    public void IntelQsvChainTriesFullPipelineThenEncodeOnlyThenCpu()
+    {
+        var chain = HardwareEncoder.Chain(Profile(), new PluginConfiguration(), "qsv", true, "/dev/dri/renderD128", null);
+        Assert.Equal(3, chain.Count);
+        Assert.True(chain[0].FullPipeline);
+        Assert.Equal("h264_qsv", chain[0].Encoder);
+        Assert.Contains("-hwaccel", chain[0].InitArguments);
+        Assert.Contains("qsv=qs@va", chain[0].InitArguments);
+        Assert.False(chain[1].FullPipeline);
+        Assert.True(chain[1].IsHardware);
+        Assert.False(chain[2].IsHardware);
+
+        var filter = chain[0].FullPipelineFilter(720, hdr: true);
+        Assert.Equal("tonemap_vaapi=format=nv12:t=bt709:m=bt709:p=bt709,scale_vaapi=w=-2:h='min(720,ih)':format=nv12,hwmap=derive_device=qsv,format=qsv", filter);
+    }
+
+    [Fact]
+    public void FullPipelineCanBeTurnedOffAndIsNotUsedForNvenc()
+    {
+        Assert.Equal(2, HardwareEncoder.Chain(Profile(), new PluginConfiguration { FullGpuPipeline = false }, "vaapi", true, null, null).Count);
+        var nvenc = HardwareEncoder.Chain(Profile(), new PluginConfiguration(), "nvenc", true, null, null);
+        Assert.Equal(2, nvenc.Count);
+        Assert.False(nvenc[0].FullPipeline);
+        Assert.Single(HardwareEncoder.Chain(Profile(), new PluginConfiguration(), "none", false, null, null));
+    }
+
+    [Fact]
+    public void FullPipelineArgumentsUseVaapiScaling()
+    {
+        var cfg = new PluginConfiguration();
+        var profile = Profile();
+        var full = HardwareEncoder.Chain(profile, cfg, "vaapi", true, null, null)[0];
+        var item = new MediaBrowser.Controller.Entities.Movies.Movie { Path = "/x.mkv", Id = Guid.NewGuid() };
+        var streams = new System.Collections.Generic.List<MediaBrowser.Model.Entities.MediaStream>
+        {
+            new() { Index = 0, Type = MediaBrowser.Model.Entities.MediaStreamType.Video, Codec = "hevc", Height = 2160 }
+        };
+        var args = TranscodeService.BuildArguments(item, streams, "out.mp4", TranscodeService.LiveFormat.File, profile, cfg, full);
+        Assert.Equal("scale_vaapi=w=-2:h='min(720,ih)':format=nv12", args[args.IndexOf("-vf") + 1]);
+        Assert.Equal("h264_vaapi", args[args.IndexOf("-c:v") + 1]);
+        Assert.True(args.IndexOf("-hwaccel") < args.IndexOf("-i"));
+    }
 }

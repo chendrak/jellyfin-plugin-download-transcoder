@@ -40,6 +40,11 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool UseJellyfinHardwareAcceleration { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets a value indicating whether decoding, scaling and HDR tone mapping also run on the GPU (Intel/AMD with QSV or VAAPI on Linux).
+    /// </summary>
+    public bool FullGpuPipeline { get; set; } = true;
+
+    /// <summary>
     /// Gets or sets a value indicating whether every audio track is kept (otherwise only the default one).
     /// </summary>
     public bool KeepAllAudioTracks { get; set; } = true;
