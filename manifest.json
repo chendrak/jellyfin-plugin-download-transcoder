@@ -3,6 +3,14 @@
     "guid": "f008c7ae-97d2-4148-8d02-e281034b764d",
     "versions": [
       {
+        "version": "1.2.1.0",
+        "changelog": "Settings page now has its own entry in the dashboard sidebar (\"Download Transcoder\"); the activity page is renamed \"Download Activity\".",
+        "targetAbi": "12.0.0.0",
+        "sourceUrl": "https://github.com/chendrak/jellyfin-plugin-download-transcoder/releases/download/v1.2.1.0/download-transcoder_1.2.1.0.zip",
+        "checksum": "fda71c0463ae6fc27b14d446beb6eb16",
+        "timestamp": "2026-11-12T18:54:46Z"
+      },
+      {
         "version": "1.2.0.0",
         "changelog": "Test GPU button (Settings, Speed and storage): short 1080p H.264 and 4K HEVC 10-bit test transcodes through each path (full GPU, GPU encode only, CPU) with speed and errors. Activity page: Cancel running transcodes and Retry or Redo finished ones.",
         "targetAbi": "12.0.0.0",
