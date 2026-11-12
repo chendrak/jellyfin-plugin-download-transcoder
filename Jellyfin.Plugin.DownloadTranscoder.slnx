@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Jellyfin.Plugin.DownloadTranscoder/Jellyfin.Plugin.DownloadTranscoder.csproj" />
+  <Project Path="Jellyfin.Plugin.DownloadTranscoder.Tests/Jellyfin.Plugin.DownloadTranscoder.Tests.csproj" />
+</Solution>

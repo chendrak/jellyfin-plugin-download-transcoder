@@ -1,0 +1,17 @@
+name: "Download Transcoder"
+guid: "f008c7ae-97d2-4148-8d02-e281034b764d"
+version: "1.0.0.0"
+targetAbi: "12.0.0.0"
+framework: "net10.0"
+overview: "Serve smaller, transcoded files when clients download media"
+description: >
+  When an app downloads a video for offline use (for example the download
+  button in the Jellyfin Android app), this plugin sends a transcoded MP4 at
+  a resolution and bitrate you choose instead of the original file. Uses
+  Jellyfin's own ffmpeg, caches results and can pre-transcode new items.
+category: "General"
+owner: "chendrak"
+artifacts:
+- "Jellyfin.Plugin.DownloadTranscoder.dll"
+changelog: >
+  First release.

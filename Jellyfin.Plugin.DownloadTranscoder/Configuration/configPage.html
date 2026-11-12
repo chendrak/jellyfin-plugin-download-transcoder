@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Download Transcoder</title>
+</head>
+<body>
+    <div id="DownloadTranscoderConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
+        <div data-role="content">
+            <div class="content-primary">
+                <form id="DownloadTranscoderConfigForm">
+                    <div class="sectionTitleContainer flex align-items-center">
+                        <h2 class="sectionTitle">Download Transcoder</h2>
+                    </div>
+                    <p>When a client downloads a video (for example with the download button in the Jellyfin mobile app), this plugin sends a smaller, transcoded MP4 instead of the original file. Add <code>?original=true</code> to a download URL to get the original anyway.</p>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="Enabled" type="checkbox" is="emby-checkbox" />
+                            <span>Transcode downloads</span>
+                        </label>
+                    </div>
+
+                    <h3>Quality</h3>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="MaxHeight">Maximum height (pixels)</label>
+                        <input id="MaxHeight" type="number" is="emby-input" min="144" />
+                        <div class="fieldDescription">480, 720 or 1080 are typical. Smaller sources are never upscaled.</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="VideoBitrateKbps">Video bitrate (kbit/s)</label>
+                        <input id="VideoBitrateKbps" type="number" is="emby-input" min="100" />
+                        <div class="fieldDescription">About 0.9 GB per hour at 2000 kbit/s.</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="VideoEncoder">Video encoder</label>
+                        <input id="VideoEncoder" type="text" is="emby-input" />
+                        <div class="fieldDescription">libx264 (H.264, plays everywhere), libx265 (HEVC, smaller), or a hardware encoder such as h264_nvenc, h264_qsv, h264_vaapi, hevc_videotoolbox.</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="EncoderPreset">Encoder preset</label>
+                        <input id="EncoderPreset" type="text" is="emby-input" />
+                        <div class="fieldDescription">For libx264/libx265: ultrafast to veryslow. Slower is smaller but takes longer. Leave empty for encoders without presets.</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="AudioBitrateKbps">Audio bitrate per track (kbit/s, AAC)</label>
+                        <input id="AudioBitrateKbps" type="number" is="emby-input" min="32" />
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="AudioChannels">Audio channels</label>
+                        <input id="AudioChannels" type="number" is="emby-input" min="1" max="8" />
+                        <div class="fieldDescription">2 downmixes surround to stereo, which suits phones and headphones.</div>
+                    </div>
+                    <div class="checkboxContainer">
+                        <label class="emby-checkbox-label">
+                            <input id="KeepAllAudioTracks" type="checkbox" is="emby-checkbox" />
+                            <span>Keep every audio track (otherwise only the default one)</span>
+                        </label>
+                    </div>
+                    <div class="checkboxContainer">
+                        <label class="emby-checkbox-label">
+                            <input id="KeepTextSubtitles" type="checkbox" is="emby-checkbox" />
+                            <span>Embed text subtitles (SRT, ASS, WebVTT). Image subtitles such as PGS are dropped.</span>
+                        </label>
+                    </div>
+                    <div class="checkboxContainer">
+                        <label class="emby-checkbox-label">
+                            <input id="TonemapHdr" type="checkbox" is="emby-checkbox" />
+                            <span>Tone map HDR to SDR so colours look right on any screen</span>
+                        </label>
+                    </div>
+                    <div class="checkboxContainer">
+                        <label class="emby-checkbox-label">
+                            <input id="SkipIfAlreadySmall" type="checkbox" is="emby-checkbox" />
+                            <span>Send the original when it is already within these limits</span>
+                        </label>
+                    </div>
+
+                    <h3>Which downloads</h3>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="IncludedClients">Only these apps (comma separated)</label>
+                        <input id="IncludedClients" type="text" is="emby-input" />
+                        <div class="fieldDescription">App names as shown under Dashboard, Devices, e.g. "Jellyfin Android". Empty means every app.</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="ExcludedClients">Never these apps (comma separated)</label>
+                        <input id="ExcludedClients" type="text" is="emby-input" />
+                        <div class="fieldDescription">e.g. "Jellyfin Web" to keep original downloads from the browser.</div>
+                    </div>
+
+                    <h3>When no smaller copy is ready yet</h3>
+                    <div class="selectContainer">
+                        <label class="selectLabel" for="OnDemand">Behaviour</label>
+                        <select is="emby-select" id="OnDemand" class="emby-select-withcolor emby-select">
+                            <option value="Live">Transcode while downloading (needs a server fast enough for real time)</option>
+                            <option value="Queue">Ask the app to retry later and prepare it in the background</option>
+                            <option value="Original">Send the original (only pre-transcoded copies are used)</option>
+                        </select>
+                        <div class="fieldDescription">Live downloads have no known size, so apps cannot show a percentage. Some players cannot seek in a live-transcoded MP4; a pre-transcoded copy always can.</div>
+                    </div>
+                    <div class="selectContainer">
+                        <label class="selectLabel" for="LiveContainer">Format while transcoding live</label>
+                        <select is="emby-select" id="LiveContainer" class="emby-select-withcolor emby-select">
+                            <option value="mp4">Fragmented MP4 (keeps subtitles)</option>
+                            <option value="mpegts">MPEG-TS (seekable in more Android players, no subtitles)</option>
+                        </select>
+                    </div>
+
+                    <h3>Cache and pre-transcoding</h3>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="MaxCacheSizeGb">Cache size limit (GB)</label>
+                        <input id="MaxCacheSizeGb" type="number" is="emby-input" min="0" />
+                        <div class="fieldDescription">Finished transcodes are kept so the next download is instant. 0 turns the cache off.</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="CachePath">Cache folder</label>
+                        <input id="CachePath" type="text" is="emby-input" />
+                        <div class="fieldDescription">Empty uses Jellyfin's cache folder.</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="MaxConcurrentTranscodes">Background transcodes at once</label>
+                        <input id="MaxConcurrentTranscodes" type="number" is="emby-input" min="1" />
+                        <div class="fieldDescription">Takes effect after a server restart.</div>
+                    </div>
+                    <div class="verticalSection">
+                        <h4>Pre-transcode the newest items in these libraries</h4>
+                        <div id="Libraries"></div>
+                        <div class="fieldDescription">The "Pre-transcode downloads" scheduled task runs daily at 3 AM. You can run it now from Dashboard, Scheduled Tasks.</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="PreTranscodeNewestItems">Newest items per library</label>
+                        <input id="PreTranscodeNewestItems" type="number" is="emby-input" min="1" />
+                    </div>
+
+                    <h3>Advanced</h3>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="ExtraInputArguments">Extra ffmpeg input arguments</label>
+                        <input id="ExtraInputArguments" type="text" is="emby-input" />
+                        <div class="fieldDescription">Placed before -i, e.g. "-hwaccel vaapi -hwaccel_device /dev/dri/renderD128 -hwaccel_output_format vaapi".</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="CustomVideoFilter">Custom video filter</label>
+                        <input id="CustomVideoFilter" type="text" is="emby-input" />
+                        <div class="fieldDescription">Replaces the built-in scale and tone-map filter, e.g. "scale_vaapi=w=-2:h={height}" for VAAPI. {height} is the maximum height.</div>
+                    </div>
+
+                    <div>
+                        <button is="emby-button" type="submit" class="raised button-submit block emby-button">
+                            <span>Save</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <script type="text/javascript">
+            (function () {
+                var pluginId = 'f008c7ae-97d2-4148-8d02-e281034b764d';
+                var page = document.querySelector('#DownloadTranscoderConfigPage');
+                var textFields = ['VideoEncoder', 'EncoderPreset', 'IncludedClients', 'ExcludedClients', 'CachePath', 'ExtraInputArguments', 'CustomVideoFilter', 'OnDemand', 'LiveContainer'];
+                var numberFields = ['MaxHeight', 'VideoBitrateKbps', 'AudioBitrateKbps', 'AudioChannels', 'MaxCacheSizeGb', 'MaxConcurrentTranscodes', 'PreTranscodeNewestItems'];
+                var boolFields = ['Enabled', 'KeepAllAudioTracks', 'KeepTextSubtitles', 'TonemapHdr', 'SkipIfAlreadySmall'];
+
+                function el(id) { return page.querySelector('#' + id); }
+
+                page.addEventListener('pageshow', function () {
+                    Dashboard.showLoadingMsg();
+                    Promise.all([ApiClient.getPluginConfiguration(pluginId), ApiClient.getVirtualFolders()]).then(function (r) {
+                        var config = r[0];
+                        var folders = r[1];
+                        textFields.forEach(function (f) { el(f).value = config[f] == null ? '' : config[f]; });
+                        numberFields.forEach(function (f) { el(f).value = config[f]; });
+                        boolFields.forEach(function (f) { el(f).checked = !!config[f]; });
+                        var selected = config.PreTranscodeLibraryIds || [];
+                        el('Libraries').innerHTML = folders.map(function (lib) {
+                            var checked = selected.indexOf(lib.ItemId) >= 0 ? ' checked' : '';
+                            var name = String(lib.Name).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+                            return '<label class="emby-checkbox-label"><input type="checkbox" is="emby-checkbox" class="libraryCheck" data-id="' + lib.ItemId + '"' + checked + ' /><span>' + name + '</span></label>';
+                        }).join('<br/>');
+                        Dashboard.hideLoadingMsg();
+                    });
+                });
+
+                page.querySelector('#DownloadTranscoderConfigForm').addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                        textFields.forEach(function (f) { config[f] = el(f).value; });
+                        numberFields.forEach(function (f) { config[f] = parseInt(el(f).value, 10) || 0; });
+                        boolFields.forEach(function (f) { config[f] = el(f).checked; });
+                        config.PreTranscodeLibraryIds = Array.prototype.map.call(page.querySelectorAll('.libraryCheck:checked'), function (c) { return c.getAttribute('data-id'); });
+                        ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
+                            Dashboard.processPluginConfigurationUpdateResult(result);
+                        });
+                    });
+                    return false;
+                });
+            })();
+        </script>
+    </div>
+</body>
+</html>

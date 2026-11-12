@@ -1,0 +1,36 @@
+name: Build and test
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: dotnet test Jellyfin.Plugin.DownloadTranscoder.slnx
+      - run: dotnet publish Jellyfin.Plugin.DownloadTranscoder -c Release -o out
+      - name: Package
+        run: |
+          mkdir -p dist
+          cd out && zip ../dist/download-transcoder.zip Jellyfin.Plugin.DownloadTranscoder.dll
+      - uses: actions/upload-artifact@v4
+        with:
+          name: download-transcoder
+          path: dist/download-transcoder.zip
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" dist/download-transcoder.zip --generate-notes
