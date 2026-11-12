@@ -77,7 +77,7 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>
     /// Gets or sets what happens when nothing is cached yet.
     /// </summary>
-    public OnDemandMode OnDemand { get; set; } = OnDemandMode.Live;
+    public OnDemandMode OnDemand { get; set; } = OnDemandMode.Queue;
 
     /// <summary>
     /// Gets or sets the container used while transcoding live: "mp4" (fragmented) or "mpegts".

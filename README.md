@@ -15,8 +15,8 @@ Requires **Jellyfin 12.x**.
 - Caches finished transcodes, so a second download is instant and supports resuming and seeking. The oldest ones are removed when the cache reaches its size limit.
 - Can pre-transcode in advance. The **Pre-transcode downloads** scheduled task runs daily at 3 AM and prepares the newest items in the libraries you pick.
 - Handles items with no ready copy in one of three ways:
-  - **Live** (the default): transcodes while the file downloads. The app can't show a percentage because the size isn't known in advance. The result is also kept in the cache.
-  - **Queue**: answers "try again later" (503) and prepares the copy in the background.
+  - **Queue** (the default): answers "try again later" (503) and prepares the copy in the background. The official Android app retries by itself, after about 30 s, 1 min, 2 min, 4 min and so on, and the download completes once the copy is ready. If transcoding fails, the original is sent instead.
+  - **Live**: transcodes while the file downloads. The size isn't known up front, so this is only used for apps that don't resume downloads; apps that send a `Range` header (such as the official Android app) still get Queue behaviour.
   - **Original**: sends the original file, so only pre-transcoded copies are ever used.
 - Adding `?original=true` to a download URL always returns the original. `?profile=Tablet` forces a specific profile.
 - Supports hardware encoding through the encoder name (`h264_nvenc`, `h264_qsv`, `h264_vaapi`, …), extra input arguments and a custom filter, all set on the settings page.

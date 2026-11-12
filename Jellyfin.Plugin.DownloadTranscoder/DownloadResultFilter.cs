@@ -115,7 +115,22 @@ public sealed class DownloadResultFilter : IAsyncResultFilter
             return;
         }
 
-        switch (cfg.OnDemand)
+        // Clients that resume downloads (they send a Range header, like the official Android app)
+        // need to know the file size up front, which a live transcode can't provide. Those get
+        // "try again later" while the file is prepared; their downloader retries automatically.
+        var mode = cfg.OnDemand;
+        if (mode == OnDemandMode.Live && request.Headers.ContainsKey("Range"))
+        {
+            mode = OnDemandMode.Queue;
+        }
+
+        if (mode == OnDemandMode.Queue && _transcodeService.HasFailedRecently(item, profile))
+        {
+            _logger.LogWarning("Transcoding {Name} failed earlier; sending the original to {Client}", item.Name, who);
+            return;
+        }
+
+        switch (mode)
         {
             case OnDemandMode.Live:
                 _logger.LogInformation("Transcoding {Name} live for {Client}", item.Name, who);
@@ -124,7 +139,7 @@ public sealed class DownloadResultFilter : IAsyncResultFilter
             case OnDemandMode.Queue:
                 _logger.LogInformation("Queued {Name} for transcoding; asked {Client} to retry later", item.Name, who);
                 _transcodeService.Queue(item, profile);
-                context.HttpContext.Response.Headers.RetryAfter = "600";
+                context.HttpContext.Response.Headers.RetryAfter = "120";
                 context.Result = new ObjectResult("A smaller copy is being prepared. Try the download again in a few minutes.")
                 {
                     StatusCode = StatusCodes.Status503ServiceUnavailable

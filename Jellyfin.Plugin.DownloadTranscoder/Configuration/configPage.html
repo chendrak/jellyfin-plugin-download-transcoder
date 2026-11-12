@@ -60,11 +60,11 @@
                     <div class="selectContainer">
                         <label class="selectLabel" for="OnDemand">Behaviour</label>
                         <select is="emby-select" id="OnDemand" class="emby-select-withcolor emby-select">
-                            <option value="Live">Transcode while downloading (needs a server fast enough for real time)</option>
-                            <option value="Queue">Ask the app to retry later and prepare it in the background</option>
+                            <option value="Queue">Prepare it in the background and ask the app to retry (recommended)</option>
+                            <option value="Live">Transcode while downloading, for apps that don't need the size up front</option>
                             <option value="Original">Send the original (only pre-transcoded copies are used)</option>
                         </select>
-                        <div class="fieldDescription">Live downloads have no known size, so apps cannot show a percentage. Some players cannot seek in a live-transcoded MP4; a pre-transcoded copy always can.</div>
+                        <div class="fieldDescription">The official Jellyfin Android app needs the file size before it starts and retries on its own, so it always gets "retry later" even in live mode. Its download finishes on a later retry, usually within a few minutes. Live downloads have no known size, and some players can't seek in them. Pre-transcoding makes downloads instant.</div>
                     </div>
                     <div class="selectContainer">
                         <label class="selectLabel" for="LiveContainer">Format while transcoding live</label>

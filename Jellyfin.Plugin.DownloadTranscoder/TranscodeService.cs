@@ -31,6 +31,7 @@ public sealed class TranscodeService : IDisposable
     private readonly IMediaSourceManager _mediaSourceManager;
     private readonly ILogger<TranscodeService> _logger;
     private readonly ConcurrentDictionary<string, Task<bool>> _inFlight = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, DateTime> _failed = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _slots;
     private readonly object _cacheLock = new();
 
@@ -146,6 +147,23 @@ public sealed class TranscodeService : IDisposable
 
         return _inFlight.GetOrAdd(target, _ => RunCacheJobAsync(item, profile, target, cancellationToken));
     }
+
+    /// <summary>
+    /// Returns true when transcoding this item with this profile failed recently, so callers can fall back to the original.
+    /// </summary>
+    /// <param name="item">The item.</param>
+    /// <param name="profile">The quality profile.</param>
+    /// <returns>Whether it failed in the last six hours.</returns>
+    public bool HasFailedRecently(BaseItem item, TranscodeProfile profile)
+        => _failed.TryGetValue(GetCachePath(item, profile), out var when) && when > DateTime.UtcNow.AddHours(-6);
+
+    /// <summary>
+    /// Returns true while a background transcode for this item and profile is running.
+    /// </summary>
+    /// <param name="item">The item.</param>
+    /// <param name="profile">The quality profile.</param>
+    /// <returns>Whether it is running.</returns>
+    public bool IsTranscoding(BaseItem item, TranscodeProfile profile) => _inFlight.ContainsKey(GetCachePath(item, profile));
 
     /// <summary>
     /// Starts a background transcode into the cache.
@@ -324,10 +342,12 @@ public sealed class TranscodeService : IDisposable
                 if (!ok)
                 {
                     TryDelete(partial);
+                    _failed[target] = DateTime.UtcNow;
                     return false;
                 }
 
                 File.Move(partial, target, true);
+                _failed.TryRemove(target, out _);
                 _logger.LogInformation("Cached download transcode of {Name}", item.Name);
                 EnforceCacheLimit();
                 return true;
@@ -341,9 +361,10 @@ public sealed class TranscodeService : IDisposable
         {
             return false;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             _logger.LogError(ex, "Transcoding {Name} failed", item.Name);
+            _failed[target] = DateTime.UtcNow;
             return false;
         }
         finally
