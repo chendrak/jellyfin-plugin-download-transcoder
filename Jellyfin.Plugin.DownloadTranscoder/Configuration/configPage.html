@@ -28,6 +28,13 @@
                     <button is="emby-button" type="button" id="AddProfile" class="raised emby-button"><span>Add profile</span></button>
 
                     <h3>Shared options</h3>
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="UseJellyfinHardwareAcceleration" type="checkbox" is="emby-checkbox" />
+                            <span>Encode on the GPU using Jellyfin's hardware acceleration settings</span>
+                        </label>
+                        <div class="fieldDescription checkboxFieldDescription">Uses the type and device set under Dashboard, Playback, Transcoding (NVENC, Quick Sync, VAAPI, VideoToolbox, AMF…) with "Enable hardware encoding" turned on. A profile's libx264 becomes h264 on the GPU and libx265 becomes HEVC on the GPU. If the GPU fails, the CPU takes over. The activity page shows which one was used.</div>
+                    </div>
                     <div class="checkboxContainer">
                         <label class="emby-checkbox-label">
                             <input id="KeepAllAudioTracks" type="checkbox" is="emby-checkbox" />
@@ -131,7 +138,7 @@
                 var page = document.querySelector('#DownloadTranscoderConfigPage');
                 var textFields = ['CachePath', 'ExtraInputArguments', 'CustomVideoFilter', 'OnDemand', 'LiveContainer'];
                 var numberFields = ['MaxCacheSizeGb', 'MaxConcurrentTranscodes', 'PreTranscodeNewestItems'];
-                var boolFields = ['Enabled', 'KeepAllAudioTracks', 'KeepTextSubtitles', 'TonemapHdr', 'SkipIfAlreadySmall'];
+                var boolFields = ['Enabled', 'UseJellyfinHardwareAcceleration', 'KeepAllAudioTracks', 'KeepTextSubtitles', 'TonemapHdr', 'SkipIfAlreadySmall'];
                 var kinds = [['Phone', 'Phone'], ['Tablet', 'Tablet'], ['Tv', 'TV'], ['Desktop', 'Computer'], ['Other', 'Other / unknown']];
                 var profiles = [];
                 var assignments = {};
@@ -170,8 +177,8 @@
                             '<div class="checkboxContainer"><label class="emby-checkbox-label"><input is="emby-checkbox" type="checkbox" data-field="Transcode"' + (p.Transcode ? ' checked' : '') + ' /><span>Transcode (untick to send the original file)</span></label></div>' +
                             field('Maximum height (pixels)', 'MaxHeight', p.MaxHeight, 'number', '480, 720, 1080 or 2160. Never upscales.') +
                             field('Video bitrate (kbit/s)', 'VideoBitrateKbps', p.VideoBitrateKbps, 'number', 'About 0.45 GB per hour per 1000 kbit/s.') +
-                            field('Video encoder', 'VideoEncoder', p.VideoEncoder, 'text', 'libx264 (plays everywhere), libx265 (smaller), or hardware: h264_nvenc, h264_qsv, h264_vaapi, hevc_videotoolbox.') +
-                            field('Encoder preset', 'EncoderPreset', p.EncoderPreset, 'text', 'ultrafast to veryslow for libx264/libx265. Empty for encoders without presets.') +
+                            field('Video encoder', 'VideoEncoder', p.VideoEncoder, 'text', 'libx264 for H.264 (plays everywhere) or libx265 for HEVC (smaller). These run on the GPU when GPU encoding is on. To force a specific GPU encoder, enter it directly, for example h264_nvenc.') +
+                            field('Encoder preset', 'EncoderPreset', p.EncoderPreset, 'text', 'ultrafast to veryslow. Only used when encoding on the CPU.') +
                             field('Audio bitrate per track (kbit/s, AAC)', 'AudioBitrateKbps', p.AudioBitrateKbps, 'number') +
                             field('Audio channels', 'AudioChannels', p.AudioChannels, 'number', '2 = stereo, 6 = 5.1') +
                             '<button is="emby-button" type="button" class="raised emby-button removeProfile" data-index="' + i + '"><span>Remove profile</span></button>' +

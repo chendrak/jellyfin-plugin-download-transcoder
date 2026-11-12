@@ -10,6 +10,8 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.DownloadTranscoder.Configuration;
+using MediaBrowser.Common.Configuration;
+using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
@@ -32,6 +34,7 @@ public sealed class TranscodeService : IDisposable
     private readonly IMediaSourceManager _mediaSourceManager;
     private readonly ILogger<TranscodeService> _logger;
     private readonly JobTracker _jobs;
+    private readonly IServerConfigurationManager _serverConfig;
     private readonly ConcurrentDictionary<string, Task<bool>> _inFlight = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, DateTime> _failed = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _slots;
@@ -44,9 +47,11 @@ public sealed class TranscodeService : IDisposable
     /// <param name="mediaSourceManager">Media source manager, used for stream info.</param>
     /// <param name="logger">Logger.</param>
     /// <param name="jobs">Job tracker.</param>
-    public TranscodeService(IMediaEncoder mediaEncoder, IMediaSourceManager mediaSourceManager, ILogger<TranscodeService> logger, JobTracker jobs)
+    /// <param name="serverConfig">Server configuration, for Jellyfin's hardware acceleration settings.</param>
+    public TranscodeService(IMediaEncoder mediaEncoder, IMediaSourceManager mediaSourceManager, ILogger<TranscodeService> logger, JobTracker jobs, IServerConfigurationManager serverConfig)
     {
         _jobs = jobs;
+        _serverConfig = serverConfig;
         _mediaEncoder = mediaEncoder;
         _mediaSourceManager = mediaSourceManager;
         _logger = logger;
@@ -192,12 +197,14 @@ public sealed class TranscodeService : IDisposable
     public async Task StreamLiveAsync(BaseItem item, TranscodeProfile profile, HttpContext context, string requestedBy = "")
     {
         var job = _jobs.Add(NewJob(item, profile, requestedBy, live: true));
+        job.Encoder = ResolveEncoder(profile, forceSoftware: false).Label;
         job.State = JobState.Running;
         job.StartedUtc = DateTime.UtcNow;
         var cfg = Config;
         var ts = string.Equals(cfg.LiveContainer, "mpegts", StringComparison.OrdinalIgnoreCase);
         var streams = GetStreams(item);
-        var args = BuildArguments(item, streams, "pipe:1", ts ? LiveFormat.MpegTs : LiveFormat.FragmentedMp4, profile);
+        var encoder = ResolveEncoder(profile, forceSoftware: false);
+        var args = BuildArguments(item, streams, "pipe:1", ts ? LiveFormat.MpegTs : LiveFormat.FragmentedMp4, profile, null, encoder);
 
         var response = context.Response;
         response.StatusCode = StatusCodes.Status200OK;
@@ -359,10 +366,26 @@ public sealed class TranscodeService : IDisposable
 
                 Directory.CreateDirectory(CacheDir);
                 var partial = Path.Combine(CacheDir, Guid.NewGuid().ToString("N") + PartialExtension);
-                var args = BuildArguments(item, GetStreams(item), partial, LiveFormat.File, profile);
-                _logger.LogInformation("Transcoding {Name} for download with profile {Profile}", item.Name, profile.Name);
+                var streams = GetStreams(item);
+                var encoder = ResolveEncoder(profile, forceSoftware: false);
+                job.Encoder = encoder.Label;
+                _logger.LogInformation("Transcoding {Name} for download with profile {Profile} on {Encoder}", item.Name, profile.Name, encoder.Label);
+                var args = BuildArguments(item, streams, partial, LiveFormat.File, profile, null, encoder);
                 args.InsertRange(0, ["-progress", "pipe:1", "-nostats"]);
                 var (ok, log) = await RunToCompletionAsync(args, cancellationToken, line => ParseProgress(job, line)).ConfigureAwait(false);
+                if (!ok && encoder.IsHardware)
+                {
+                    // The GPU encode failed (driver, device permissions, unsupported codec…). Try the CPU.
+                    _logger.LogWarning("GPU transcode of {Name} with {Encoder} failed, retrying on the CPU: {Log}", item.Name, encoder.Encoder, log);
+                    var cpu = ResolveEncoder(profile, forceSoftware: true);
+                    job.Encoder = cpu.Label + ", after " + encoder.Encoder + " failed";
+                    job.GpuError = log;
+                    job.ProcessedSeconds = 0;
+                    args = BuildArguments(item, streams, partial, LiveFormat.File, profile, null, cpu);
+                    args.InsertRange(0, ["-progress", "pipe:1", "-nostats"]);
+                    (ok, log) = await RunToCompletionAsync(args, cancellationToken, line => ParseProgress(job, line)).ConfigureAwait(false);
+                }
+
                 if (!ok)
                 {
                     TryDelete(partial);
@@ -462,6 +485,19 @@ public sealed class TranscodeService : IDisposable
         }
 
         return (true, log);
+    }
+
+    private EncoderChoice ResolveEncoder(TranscodeProfile profile, bool forceSoftware)
+    {
+        var options = _serverConfig.GetEncodingOptions();
+        return HardwareEncoder.Resolve(
+            profile,
+            Config,
+            options.HardwareAccelerationType.ToString(),
+            options.EnableHardwareEncoding,
+            options.VaapiDevice,
+            options.QsvDevice,
+            forceSoftware);
     }
 
     private static TranscodeJob NewJob(BaseItem item, TranscodeProfile profile, string requestedBy, bool live)
@@ -634,10 +670,12 @@ public sealed class TranscodeService : IDisposable
         return Path.Combine(CacheDir, item.Id.ToString("N") + "_" + hash + CacheExtension);
     }
 
-    internal static List<string> BuildArguments(BaseItem item, List<MediaStream> streams, string output, LiveFormat format, TranscodeProfile profile, PluginConfiguration? config = null)
+    internal static List<string> BuildArguments(BaseItem item, List<MediaStream> streams, string output, LiveFormat format, TranscodeProfile profile, PluginConfiguration? config = null, EncoderChoice? encoderChoice = null)
     {
         var cfg = config ?? Config;
+        var choice = encoderChoice ?? HardwareEncoder.Resolve(profile, cfg, null, false, null, null);
         var args = new List<string> { "-hide_banner", "-nostdin", "-y", "-loglevel", "error" };
+        args.AddRange(choice.InitArguments);
         args.AddRange(SplitArguments(cfg.ExtraInputArguments));
         args.Add("-i");
         args.Add(item.Path);
@@ -681,12 +719,16 @@ public sealed class TranscodeService : IDisposable
             {
                 filter += ",zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p";
             }
+
+            filter += choice.FilterSuffix;
         }
 
-        var encoder = string.IsNullOrWhiteSpace(profile.VideoEncoder) ? "libx264" : profile.VideoEncoder.Trim();
+        var encoder = choice.Encoder;
         var kbps = Math.Max(100, profile.VideoBitrateKbps);
         args.AddRange(["-vf", filter, "-c:v", encoder]);
-        if (!string.IsNullOrWhiteSpace(profile.EncoderPreset))
+
+        // libx264/libx265 presets (veryfast, …) mean nothing to GPU encoders, so only pass them to the CPU ones.
+        if (!choice.IsHardware && !string.IsNullOrWhiteSpace(profile.EncoderPreset))
         {
             args.AddRange(["-preset", profile.EncoderPreset.Trim()]);
         }

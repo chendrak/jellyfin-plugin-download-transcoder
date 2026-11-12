@@ -35,6 +35,11 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool Enabled { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets a value indicating whether the GPU set under Dashboard, Playback, Transcoding is used for encoding.
+    /// </summary>
+    public bool UseJellyfinHardwareAcceleration { get; set; } = true;
+
+    /// <summary>
     /// Gets or sets a value indicating whether every audio track is kept (otherwise only the default one).
     /// </summary>
     public bool KeepAllAudioTracks { get; set; } = true;

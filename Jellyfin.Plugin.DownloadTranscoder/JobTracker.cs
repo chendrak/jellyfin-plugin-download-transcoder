@@ -81,6 +81,12 @@ public class TranscodeJob
     /// <summary>Gets or sets the output size in bytes so far.</summary>
     public long OutputBytes { get; set; }
 
+    /// <summary>Gets or sets the encoder used, e.g. "GPU (qsv: h264_qsv)" or "CPU (libx264)".</summary>
+    public string Encoder { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the GPU error, when the GPU failed and the CPU took over.</summary>
+    public string? GpuError { get; set; }
+
     /// <summary>Gets or sets the error, for failed jobs.</summary>
     public string? Error { get; set; }
 

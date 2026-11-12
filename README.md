@@ -20,7 +20,7 @@ Requires **Jellyfin 12.x**.
   - **Original**: sends the original file, so only pre-transcoded copies are ever used.
 - Adding `?original=true` to a download URL always returns the original. `?profile=Tablet` forces a specific profile.
 - Shows a **Download Transcodes** page in the dashboard menu, with live progress (percent, speed, time left) for running transcodes, a history of past ones with their size savings and any errors, and the cached copies, each with a delete button.
-- Supports hardware encoding through the encoder name (`h264_nvenc`, `h264_qsv`, `h264_vaapi`, …), extra input arguments and a custom filter, all set on the settings page.
+- Encodes on the GPU set under Dashboard → Playback → Transcoding (NVENC, Quick Sync, VAAPI, VideoToolbox, AMF, RKMPP) when "Enable hardware encoding" is on there. If the GPU encode fails, it retries on the CPU. Decoding, scaling and HDR tone mapping stay on the CPU. You can also enter a specific encoder in a profile (for example `h264_nvenc`), and add extra input arguments or a custom filter.
 
 ## Device profiles
 

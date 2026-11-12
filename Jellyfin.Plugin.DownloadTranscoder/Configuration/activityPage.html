@@ -85,21 +85,21 @@
                         return '<div class="dtJob"><div><b>' + esc(j.ItemName) + '</b></div>' +
                             '<div class="dtBar' + (known ? '' : ' indeterminate') + '"><div style="width:' + (pct || 0) + '%"></div></div>' +
                             '<div>' + esc(status) + (parts.length ? ' · ' + esc(parts.join(' · ')) : '') + '</div>' +
-                            '<div class="dtMeta">Profile ' + esc(j.Profile) + ' · for ' + esc(j.RequestedBy || 'unknown') + ' · source ' + size(j.SourceBytes) + '</div></div>';
+                            '<div class="dtMeta">' + esc(j.Encoder || '') + ' · profile ' + esc(j.Profile) + ' · for ' + esc(j.RequestedBy || 'unknown') + ' · source ' + size(j.SourceBytes) + '</div></div>';
                     }).join('');
                 }
 
                 function renderHistory(jobs) {
                     if (!jobs.length) { el('dtHistory').innerHTML = 'No transcodes yet.'; el('dtHistory').className = 'dtScroll dtMuted'; return; }
                     el('dtHistory').className = 'dtScroll';
-                    el('dtHistory').innerHTML = '<table><thead><tr><th>Finished</th><th>Item</th><th>Profile</th><th>For</th><th>Result</th><th>Took</th><th>Size</th></tr></thead><tbody>' +
+                    el('dtHistory').innerHTML = '<table><thead><tr><th>Finished</th><th>Item</th><th>Profile</th><th>Encoder</th><th>For</th><th>Result</th><th>Took</th><th>Size</th></tr></thead><tbody>' +
                         jobs.map(function (j) {
                             var ok = j.State === 'Completed';
                             var result = '<span class="' + (ok ? 'dtOk' : j.State === 'Failed' ? 'dtBad' : 'dtMuted') + '">' + esc(j.State) + (j.Live ? ' (live)' : '') + '</span>';
                             if (j.Error) { result += '<pre>' + esc(j.Error) + '</pre>'; }
                             var sizeText = ok && j.OutputBytes ? size(j.SourceBytes) + ' → ' + size(j.OutputBytes) +
                                 (j.SourceBytes ? ' (' + Math.round(100 - 100 * j.OutputBytes / j.SourceBytes) + '% smaller)' : '') : '';
-                            return '<tr><td>' + when(j.EndedUtc) + '</td><td>' + esc(j.ItemName) + '</td><td>' + esc(j.Profile) + '</td><td>' + esc(j.RequestedBy) + '</td><td>' + result + '</td><td>' + dur(elapsed(j)) + '</td><td>' + sizeText + '</td></tr>';
+                            return '<tr><td>' + when(j.EndedUtc) + '</td><td>' + esc(j.ItemName) + '</td><td>' + esc(j.Profile) + '</td><td>' + esc(j.Encoder || '') + (j.GpuError ? '<pre>' + esc(j.GpuError) + '</pre>' : '') + '</td><td>' + esc(j.RequestedBy) + '</td><td>' + result + '</td><td>' + dur(elapsed(j)) + '</td><td>' + sizeText + '</td></tr>';
                         }).join('') + '</tbody></table>';
                 }
 
